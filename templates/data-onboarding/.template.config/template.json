@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "LuxStack contributors",
+  "classifications": [ "Web", "Blazor", "MAUI", "LuxStack" ],
+  "identity": "Lux.Spreadsheet.Onboarding",
+  "name": "LuxStack Spreadsheet Data Onboarding App",
+  "shortName": "lux-spreadsheet-app",
+  "sourceName": "LuxApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project",
+    "luxstack": "spreadsheet"
+  }
+}
