@@ -1,6 +1,6 @@
 # Architecture — Lux.Spreadsheet
 
-Lux.Spreadsheet follows the strict TanStack two-layer architecture shared across every repository in **LuxStack**:
+Lux.Spreadsheet follows the strict headless two-layer architecture shared across every repository in **LuxStack**:
 
 ```text
 +-------------------------------------------------------------------+
