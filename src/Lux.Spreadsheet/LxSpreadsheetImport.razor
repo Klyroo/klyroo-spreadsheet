@@ -31,7 +31,7 @@
                             <button type="button"
                                     disabled="@(!isDone)"
                                     aria-current="@(isCurrent ? "step" : null)"
-                                    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold @(isCurrent ? "bg-(--lux-primary) text-white" : isDone ? "bg-(--lux-success)/15 text-(--lux-success-text) hover:opacity-90" : "bg-(--lux-bg-muted) text-(--lux-text-muted)") disabled:cursor-default"
+                                    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold @(isCurrent ? "bg-(--lux-primary) text-(--lux-primary-contrast)" : isDone ? "bg-(--lux-success)/15 text-(--lux-success-text) hover:opacity-90" : "bg-(--lux-bg-muted) text-(--lux-text-muted)") disabled:cursor-default"
                                     data-slot="spreadsheet-step-item"
                                     data-key="@step.Key"
                                     data-state="@step.State"
@@ -115,7 +115,7 @@
                     {
                         <button type="button"
                                 disabled="@(!Importer.CanNextStep)"
-                                class="inline-flex h-9 items-center rounded-(--lux-radius) bg-(--lux-primary) px-4 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                                class="inline-flex h-9 items-center rounded-(--lux-radius) bg-(--lux-primary) px-4 text-xs font-semibold text-(--lux-primary-contrast) hover:opacity-90 disabled:opacity-40"
                                 data-slot="spreadsheet-nav-continue"
                                 @onclick="@(() => Importer.NextStep())">
                             Continue
@@ -125,7 +125,7 @@
                     {
                         <button type="button"
                                 disabled="@(!Importer.CanSubmit || Importer.SubmitStatus == SpreadsheetSubmitStatus.Running)"
-                                class="inline-flex h-9 items-center rounded-(--lux-radius) bg-(--lux-primary) px-4 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                                class="inline-flex h-9 items-center rounded-(--lux-radius) bg-(--lux-primary) px-4 text-xs font-semibold text-(--lux-primary-contrast) hover:opacity-90 disabled:opacity-40"
                                 data-slot="spreadsheet-submit-button"
                                 @onclick="Importer.SubmitAsync">
                             @($"Import {Importer.ImportableRows.Count} rows")
