@@ -75,7 +75,6 @@ importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass s
 | [API Reference](./docs/api-reference.md) | Exhaustive reference of every public class, enum, property, method, and Razor parameter |
 | [MAUI & NativeAOT](./docs/maui-and-aot.md) | `.NET MAUI Blazor Hybrid` (`iOS`, `Android`, `macOS`, `Windows`) and NativeAOT deployment |
 | [Recipes & Testing](./docs/recipes.md) | End-to-end production patterns and `xUnit` / `bUnit` testing recipes |
-| [Product Landing Page](./site/index.html) | Standalone TanStack-style interactive landing page |
 | [AI Agent Skill](./skills/lux-spreadsheet/SKILL.md) | Machine-readable guidance for coding agents |
 
 ## Key Public Types
