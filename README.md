@@ -1,5 +1,7 @@
 # Lux.Spreadsheet (LuxStack)
 
+[![CI](https://github.com/luxstack/lux-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/luxstack/lux-spreadsheet/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/badge/NuGet-0.1.0--preview.1-004880.svg)](https://www.nuget.org/packages/Lux.Spreadsheet) [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/) [![NativeAOT](https://img.shields.io/badge/NativeAOT-Compatible-10b981.svg)](https://luxstack.dev/why) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 > **Headless CSV/TSV importer, 20-row header detection, 80%-pass suggestions & batch retry**
 
 100% NativeAOT spreadsheet import engine in Lux.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
