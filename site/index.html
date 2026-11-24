@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -185,7 +185,11 @@ footer { padding: 36px 0; font-size: 12.5px; color: var(--text-muted); display: 
           <h1>Intelligent CSV import<br /><span class="accent">&amp; row reconciliation.</span></h1>
         </div>
         <div>
-          <p class="lead">Moteur d&#x27;importation de tableurs 100% NativeAOT dans Lux.Spreadsheet.Core : détection heuristique de la ligne d&#x27;en-tête sur 20 lignes, normalisation NFD sans accents, suggestion de colonnes validées à ≥80 %, questions de valeurs inconnues, gestion des doublons/upserts, édition en ligne et soumission par lots avec relance des rejets.</p>
+          <p class="lead">100% NativeAOT spreadsheet import engine in Lux.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate &amp; existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+            <a class="btn btn-accent" href="../docs/getting-started.md">Read Documentation →</a>
+            <a class="btn" href="../docs/api-reference.md">API Reference</a>
+          </div>
           <div class="install-stack">
             <button class="cmd mono" type="button" onclick="copyCmd(this,'dotnet add package Lux.Spreadsheet')">
               <span>$ dotnet add package <strong>Lux.Spreadsheet</strong> <span class="comment"># Blazor + MAUI Hybrid</span></span>
@@ -196,7 +200,7 @@ footer { padding: 36px 0; font-size: 12.5px; color: var(--text-muted); display: 
               <span class="copy-tag">Copy</span>
             </button>
           </div>
-          <div class="platforms"><span class="plat mono">Headless C# / NativeAOT</span><span class="plat mono">.NET MAUI Native C#</span><span class="plat mono">Blazor Web &amp; MAUI Hybrid</span><span class="plat mono">Clipboard Paste (Excel/Sheets)</span></div>
+          <div class="platforms"><span class="plat mono">Headless C# / NativeAOT</span><span class="plat mono">.NET MAUI Native C#</span><span class="plat mono">Blazor Server / WASM / Auto</span><span class="plat mono">.NET MAUI Blazor Hybrid</span></div>
         </div>
       </div>
 
@@ -229,7 +233,7 @@ A2;45,00;USD</pre>
     <div class="wrap">
       <div class="eyebrow mono">Why Lux.Spreadsheet</div>
       <h2>Headless C# engine.<br /><span style="color:var(--accent)">Production-ready UI.</span></h2>
-      <div class="grid-4"><article class="card"><span class="tag mono">Auto Header</span><h3>Détection heuristique sur 20 lignes</h3><p>Ignore automatiquement les lignes de titre ou métadonnées d&#x27;export Excel/CSV pour localiser la vraie ligne d&#x27;en-tête.</p></article><article class="card"><span class="tag mono">Smart Mapping</span><h3>Normalisation NFD &amp; seuil 80 %</h3><p>Normalise les en-têtes (accents, *, (required)) et suggère les colonnes manquantes uniquement si ≥80 % des lignes passent la validation.</p></article><article class="card"><span class="tag mono">Reconciliation</span><h3>Valeurs inconnues &amp; Upsert</h3><p>Invite l&#x27;utilisateur à mapper ou ignorer les valeurs inconnues et détecte doublons intra-fichier ou mises à jour existantes.</p></article><article class="card"><span class="tag mono">Batch Retry</span><h3>Envoi par lots &amp; relance ciblée</h3><p>Soumet les lignes validées par lots et isole les lignes rejetées par le serveur pour édition inline et relance immédiate.</p></article></div>
+      <div class="grid-4"><article class="card"><span class="tag mono">Auto Header</span><h3>20-Row Heuristic Header Detection</h3><p>Automatically skips export banners and title rows across the first 20 rows of a CSV/TSV or clipboard paste to locate the real header row.</p></article><article class="card"><span class="tag mono">Smart Mapping</span><h3>NFD Normalization &amp; 80%-Pass Matching</h3><p>Normalizes headers (accents, *, (required)) and suggests unmapped columns only when ≥80% of sample values pass type parsing and validation rules.</p></article><article class="card"><span class="tag mono">Reconciliation</span><h3>Unknown Value Questions &amp; Upsert</h3><p>Surfaces unknown select values as explicit mapping questions and resolves intra-file duplicates or updates against existing database records.</p></article><article class="card"><span class="tag mono">Batch Retry</span><h3>Batch Submit &amp; Retry Rejected Rows</h3><p>Submits validated rows in configurable batches and isolates server-rejected rows for inline correction and targeted retry.</p></article></div>
     </div>
   </section>
 
@@ -254,7 +258,7 @@ var schema = new SpreadsheetSchema
 };
 
 var importer = new SpreadsheetImporter(schema);
-importer.LoadText(csvText, &quot;rates.csv&quot;); // Détecte en-têtes &amp; suggestions ≥80%</code></pre>
+importer.LoadText(csvText, &quot;rates.csv&quot;); // Auto-detects header row &amp; 80%-pass suggestions</code></pre>
         </div>
         <div class="code-panel">
           <div class="code-head mono"><span>Lux.Spreadsheet · BxSpreadsheetImport Wizard</span><span class="layer-ui">UI · Blazor &amp; MAUI</span></div>
@@ -268,12 +272,27 @@ importer.LoadText(csvText, &quot;rates.csv&quot;); // Détecte en-têtes &amp; s
 
   <section class="band">
     <div class="wrap">
-      <div class="eyebrow mono">Package Exports &amp; Components</div>
+      <div class="eyebrow mono">Exhaustive Documentation</div>
+      <h2>Guides, Architecture &amp; API Reference</h2>
+      <div class="grid-4" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+            <a class="card" href="../docs/getting-started.md"><span class="tag mono">GUIDE</span><h3>Getting Started</h3><p>Package installation, DI setup, namespace imports, and your first example.</p></a>
+            <a class="card" href="../docs/architecture.md"><span class="tag mono">CORE + UI</span><h3>Architecture</h3><p>Strict two-layer headless NativeAOT Core vs Blazor &amp; MAUI Hybrid UI split.</p></a>
+            <a class="card" href="../docs/api-reference.md"><span class="tag mono">EXHAUSTIVE API</span><h3>Complete API Reference</h3><p>Every public class, enum, property, method, and Razor parameter extracted from source.</p></a>
+            <a class="card" href="../docs/maui-and-aot.md"><span class="tag mono">MULTIPLATFORM</span><h3>.NET MAUI &amp; NativeAOT</h3><p>Setup for iOS, Android, macOS Catalyst, Windows, and NativeAOT builds.</p></a>
+            <a class="card" href="../docs/recipes.md"><span class="tag mono">RECIPES</span><h3>Recipes &amp; Testing</h3><p>Production patterns and xUnit / bUnit testing examples.</p></a>
+            <a class="card" href="http://localhost:5180/docs/lux-spreadsheet"><span class="tag mono">PLAYGROUND</span><h3>Interactive Playground Docs</h3><p>Live documentation page with interactive examples and XML-backed API tables.</p></a>
+            </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <div class="eyebrow mono">Package Exports</div>
       <h2>Included in Lux.Spreadsheet</h2>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Export</th><th>Layer</th><th>NuGet Package</th><th>Description</th></tr></thead>
-          <tbody><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetSchema</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Colonnes typées, règles, options, politiques de doublons et upsert.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetImporter</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Moteur NativeAOT : parseur CSV/TSV, détection en-têtes, mapping &amp; lots.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">BxSpreadsheetImport</td><td><span class="mono layer-ui">UI</span></td><td class="mono">Lux.Spreadsheet</td><td style="color:var(--text-muted)">Assistant Blazor/MAUI en 5 étapes avec édition inline des cellules.</td></tr></tbody>
+          <tbody><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">&lt;BxSpreadsheetImport&gt;</td><td><span class="mono layer-ui">UI</span></td><td class="mono">Lux.Spreadsheet</td><td style="color:var(--text-muted)">3 Razor parameters · <code>src/Lux.Spreadsheet/BxSpreadsheetImport.razor</code></td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetColumnKind</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Column data types in a `SpreadsheetSchema`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetUnknownValuePolicy</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Policy for unknown select values in `SpreadsheetColumnSchema`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetDuplicatesPolicy</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Duplicate row key policy in `SpreadsheetSchema`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetExistingAction</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Action taken when an imported row matches an existing stored record.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetColumnStatus</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Status of a column mapping in `SpreadsheetImporter`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetIssueLevel</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Severity level of a `SpreadsheetRowIssue`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetRowStatus</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Overall validation status of a `SpreadsheetRow`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetDiscardReason</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Reason why a `SpreadsheetRow` was discarded from import.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetRowMode</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Import mode of a `SpreadsheetRow`.</td></tr><tr><td class="mono" style="font-weight:600;color:var(--text-strong)">SpreadsheetReviewTab</td><td><span class="mono layer-core">Core</span></td><td class="mono">Lux.Spreadsheet.Core</td><td style="color:var(--text-muted)">Review table tab filter in `SpreadsheetImporter`.</td></tr></tbody>
         </table>
       </div>
     </div>
