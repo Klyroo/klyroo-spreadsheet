@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Blux.UI.Tools;
+namespace Lux.Spreadsheet;
 
 /// <summary>Column data types in a <c>SpreadsheetSchema</c>.</summary>
 public enum SpreadsheetColumnKind

@@ -27,8 +27,8 @@ builder.Services.AddLuxSpreadsheet();
 In `_Imports.razor`:
 
 ```razor
-@using Blux.UI
-@using Blux.UI.Tools
+@using Lux.UI
+@using Lux.Spreadsheet
 
 ```
 
@@ -37,7 +37,7 @@ In `_Imports.razor`:
 ### Headless C# (`Lux.Spreadsheet.Core`)
 
 ```csharp
-using Blux.UI.Tools;
+using Lux.Spreadsheet;
 
 var schema = new SpreadsheetSchema
 {

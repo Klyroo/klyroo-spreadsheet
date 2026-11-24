@@ -2,7 +2,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace Blux.UI.Tools.Tests;
+namespace Lux.Spreadsheet.Tests;
 
 public sealed class SpreadsheetTests : BunitContext
 {

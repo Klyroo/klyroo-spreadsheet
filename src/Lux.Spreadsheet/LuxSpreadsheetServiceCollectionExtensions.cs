@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Blux.UI.Tools;
+namespace Lux.Spreadsheet;
 
 public static class LuxSpreadsheetServiceCollectionExtensions
 {
     public static IServiceCollection AddLuxSpreadsheet(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddBluxUi();
+        services.AddLuxUi();
         return services;
     }
 }
