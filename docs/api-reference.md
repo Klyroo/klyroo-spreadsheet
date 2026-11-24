@@ -4,8 +4,8 @@ Complete public API reference extracted directly from the source code of `Lux.Sp
 
 ## Razor Components
 
-### `<BxSpreadsheetImport>`
-*Package*: `Lux.Spreadsheet` · *Source*: `src/Lux.Spreadsheet/BxSpreadsheetImport.razor`
+### `<LxSpreadsheetImport>`
+*Package*: `Lux.Spreadsheet` · *Source*: `src/Lux.Spreadsheet/LxSpreadsheetImport.razor`
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
@@ -218,7 +218,7 @@ Declarative definition of a spreadsheet column.
 ### `class SpreadsheetSchema`
 *Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
 
-Top-level declarative schema for `SpreadsheetImporter` and `BxSpreadsheetImport`.
+Top-level declarative schema for `SpreadsheetImporter` and `LxSpreadsheetImport`.
 
 | Member | Type | Description |
 | :--- | :--- | :--- |

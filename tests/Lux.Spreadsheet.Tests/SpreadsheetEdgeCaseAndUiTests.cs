@@ -191,7 +191,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     }
 
     [Fact]
-    public void BxSpreadsheetImport_renders_columns_step_when_required_field_is_unmatched()
+    public void LxSpreadsheetImport_renders_columns_step_when_required_field_is_unmatched()
     {
         var schema = new SpreadsheetSchema
         {
@@ -204,7 +204,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         };
 
         var importer = new SpreadsheetImporter(schema);
-        var cut = Render<BxSpreadsheetImport>(p => p.Add(x => x.Importer, importer));
+        var cut = Render<LxSpreadsheetImport>(p => p.Add(x => x.Importer, importer));
         importer.LoadText("SKU,MysteryCol\nA1,abc", "u.csv");
         cut.Render();
 

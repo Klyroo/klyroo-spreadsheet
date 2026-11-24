@@ -61,7 +61,7 @@ importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass s
 ### Blazor Web & .NET MAUI Hybrid (`Lux.Spreadsheet`)
 
 ```razor
-<BxSpreadsheetImport Importer="@_importer"
+<LxSpreadsheetImport Importer="@_importer"
                      Title="Import Product Rates"
                      Wizard="true" />
 ```
@@ -97,14 +97,14 @@ importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass s
 | `SpreadsheetOption` | `record` | `Lux.Spreadsheet.Core` | An allowed select option with optional aliases for exact normalized matching. |
 | `SpreadsheetRule` | `record` | `Lux.Spreadsheet.Core` | A validation rule attached to a `SpreadsheetColumnSchema`. |
 | `SpreadsheetColumnSchema` | `class` | `Lux.Spreadsheet.Core` | Declarative definition of a spreadsheet column. |
-| `SpreadsheetSchema` | `class` | `Lux.Spreadsheet.Core` | Top-level declarative schema for `SpreadsheetImporter` and `BxSpreadsheetImport`. |
+| `SpreadsheetSchema` | `class` | `Lux.Spreadsheet.Core` | Top-level declarative schema for `SpreadsheetImporter` and `LxSpreadsheetImport`. |
 | `SpreadsheetRejectedRow` | `record` | `Lux.Spreadsheet.Core` | A server-side rejection reported for a specific row index during submit. |
 
 ## Razor Components
 
 | Component | Package | Parameters | Source |
 | :--- | :--- | :--- | :--- |
-| `<BxSpreadsheetImport>` | `Lux.Spreadsheet` | 3 parameters | `src/Lux.Spreadsheet/BxSpreadsheetImport.razor` |
+| `<LxSpreadsheetImport>` | `Lux.Spreadsheet` | 3 parameters | `src/Lux.Spreadsheet/LxSpreadsheetImport.razor` |
 
 ## Building & Testing
 

@@ -182,7 +182,7 @@ public sealed class SpreadsheetColumnSchema
     public string EffectiveLabel => Label ?? SpreadsheetImporter.HumanizeKey(Key);
 }
 
-/// <summary>Top-level declarative schema for <c>SpreadsheetImporter</c> and <c>BxSpreadsheetImport</c>.</summary>
+/// <summary>Top-level declarative schema for <c>SpreadsheetImporter</c> and <c>LxSpreadsheetImport</c>.</summary>
 public sealed class SpreadsheetSchema
 {
     public string Key { get; init; } = "import";

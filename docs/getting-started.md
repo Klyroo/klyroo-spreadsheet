@@ -57,7 +57,7 @@ importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass s
 ### Blazor / MAUI Hybrid (`Lux.Spreadsheet`)
 
 ```razor
-<BxSpreadsheetImport Importer="@_importer"
+<LxSpreadsheetImport Importer="@_importer"
                      Title="Import Product Rates"
                      Wizard="true" />
 ```
