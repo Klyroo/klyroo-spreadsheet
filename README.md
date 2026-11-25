@@ -36,6 +36,8 @@ dotnet add package Klyroo.Spreadsheet --prerelease        # engine and Blazor wi
 For the Blazor wizard, register the services in `Program.cs` (or `MauiProgram.cs`), import the namespace in `_Imports.razor`, and load the stylesheets after the ones of Klyroo.UI:
 
 ```csharp
+using Klyroo.Spreadsheet;
+
 builder.Services.AddKlyrooSpreadsheet();
 ```
 

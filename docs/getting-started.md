@@ -79,7 +79,7 @@ The importer never changes your file. It holds what the user decided (column cho
 
 ## 4. Send the rows to your code
 
-`OnSubmit` receives the importable rows and returns the rows your server refused, or `null` when it accepted all of them. Add it to the schema:
+`OnSubmit` receives the importable rows and returns the rows your server refused, or `null` when it accepted all of them. Add it to the schema of step 2 (shown here as the full initializer, so replace that declaration rather than adding a second one):
 
 ```csharp
 var schema = new SpreadsheetSchema
@@ -99,9 +99,8 @@ var schema = new SpreadsheetSchema
 Then submit:
 
 ```csharp
-await importer.SubmitAsync();
-Console.WriteLine(importer.ImportedCount); // 1
-// A-1: 12.5 EUR
+await importer.SubmitAsync();                // OnSubmit prints: A-1: 12.5 EUR
+Console.WriteLine(importer.ImportedCount);   // 1
 ```
 
 `row.Data` holds typed values: a `double` for the price, the option value (`EUR`) for the currency. The complete program of steps 2 to 4 is the sample in the [README](../README.md#quick-start).
@@ -117,6 +116,8 @@ dotnet add package Klyroo.Spreadsheet --prerelease
 Register the services. In a Blazor Web App that uses WebAssembly or Auto, call it in both the server and the client project:
 
 ```csharp
+using Klyroo.Spreadsheet;
+
 builder.Services.AddKlyrooSpreadsheet();
 ```
 

@@ -30,6 +30,8 @@ Reading a file is your job. `OpenReadStream` allows 500 KB by default and throws
 `Klyroo.Spreadsheet` declares the platforms `browser`, `ios`, `android`, `maccatalyst` and `windows`, which are the targets of a MAUI Blazor Hybrid app plus the browser. Use it as in a Blazor app: register the services in `MauiProgram.CreateMauiApp`, next to `AddMauiBlazorWebView()`:
 
 ```csharp
+using Klyroo.Spreadsheet;
+
 builder.Services.AddKlyrooSpreadsheet();
 ```
 
