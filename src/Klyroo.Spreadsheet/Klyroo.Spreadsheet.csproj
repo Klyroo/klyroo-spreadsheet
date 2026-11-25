@@ -5,7 +5,7 @@
     <PackageId>Klyroo.Spreadsheet</PackageId>
     <Description>Klyroo Spreadsheet Import wizard, column/value mapping, inline review table and row inspector for Blazor Web &amp; .NET MAUI Hybrid.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591;BL0007</NoWarn>
+    <NoWarn>$(NoWarn);BL0007</NoWarn>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>

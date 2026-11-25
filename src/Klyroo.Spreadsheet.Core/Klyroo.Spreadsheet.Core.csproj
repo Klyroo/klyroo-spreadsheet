@@ -5,7 +5,6 @@
     <PackageId>Klyroo.Spreadsheet.Core</PackageId>
     <Description>Klyroo Spreadsheet Core: Headless spreadsheet import engine with layout detection, 80%-pass column suggestions, unknown value resolution, row validation and batched submit. Zero UI dependency, NativeAOT compatible.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <IsTrimmable>true</IsTrimmable>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
