@@ -1,25 +1,25 @@
-# Getting Started with Lux.Spreadsheet
+# Getting Started with Klyroo.Spreadsheet
 
-100% NativeAOT spreadsheet import engine in Lux.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
+100% NativeAOT spreadsheet import engine in Klyroo.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
 
 ## 1. Choose Your Package
 
 | Use Case | Package to Install |
 | :--- | :--- |
-| Headless C#, Minimal APIs, Workers, CLI, or native C# .NET MAUI ViewModels | `Lux.Spreadsheet.Core` |
-| Blazor Web App (Server, WebAssembly, Auto, Static SSR) or `.NET MAUI Blazor Hybrid` | `Lux.Spreadsheet` |
+| Headless C#, Minimal APIs, Workers, CLI, or native C# .NET MAUI ViewModels | `Klyroo.Spreadsheet.Core` |
+| Blazor Web App (Server, WebAssembly, Auto, Static SSR) or `.NET MAUI Blazor Hybrid` | `Klyroo.Spreadsheet` |
 
 ```bash
-dotnet add package Lux.Spreadsheet.Core
-dotnet add package Lux.Spreadsheet
+dotnet add package Klyroo.Spreadsheet.Core
+dotnet add package Klyroo.Spreadsheet
 ```
 
 ## 2. Register Services
 
-Call `builder.Services.AddLuxSpreadsheet();` in `Program.cs` (both Server and Client projects when using Blazor Interactive Auto) or `MauiProgram.cs` (after `AddMauiBlazorWebView()`):
+Call `builder.Services.AddKlyrooSpreadsheet();` in `Program.cs` (both Server and Client projects when using Blazor Interactive Auto) or `MauiProgram.cs` (after `AddMauiBlazorWebView()`):
 
 ```csharp
-builder.Services.AddLuxSpreadsheet();
+builder.Services.AddKlyrooSpreadsheet();
 ```
 
 ## 3. Add Namespace Imports
@@ -27,17 +27,17 @@ builder.Services.AddLuxSpreadsheet();
 In `_Imports.razor`:
 
 ```razor
-@using Lux.UI
-@using Lux.Spreadsheet
+@using Klyroo.UI
+@using Klyroo.Spreadsheet
 
 ```
 
 ## 4. First Example
 
-### Headless C# (`Lux.Spreadsheet.Core`)
+### Headless C# (`Klyroo.Spreadsheet.Core`)
 
 ```csharp
-using Lux.Spreadsheet;
+using Klyroo.Spreadsheet;
 
 var schema = new SpreadsheetSchema
 {
@@ -54,10 +54,10 @@ var importer = new SpreadsheetImporter(schema);
 importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass suggestions
 ```
 
-### Blazor / MAUI Hybrid (`Lux.Spreadsheet`)
+### Blazor / MAUI Hybrid (`Klyroo.Spreadsheet`)
 
 ```razor
-<LxSpreadsheetImport Importer="@_importer"
+<KlySpreadsheetImport Importer="@_importer"
                      Title="Import Product Rates"
                      Wizard="true" />
 ```

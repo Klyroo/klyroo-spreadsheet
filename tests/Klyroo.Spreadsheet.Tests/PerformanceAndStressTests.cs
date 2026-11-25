@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Lux.Spreadsheet;
+using Klyroo.Spreadsheet;
 using Xunit;
 
-namespace Lux.Spreadsheet.Tests;
+namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class PerformanceAndStressTests
 {
@@ -16,7 +16,7 @@ public sealed class PerformanceAndStressTests
         for (var i = 1; i <= 5_000; i++)
         {
             var amount = (i * 1.25).ToString("F2", CultureInfo.InvariantCulture).Replace('.', ',');
-            sb.Append($"SKU-{i:D5};user{i}@luxstack.dev;{amount}\n");
+            sb.Append($"SKU-{i:D5};user{i}@klyroo.dev;{amount}\n");
         }
 
         var schema = new SpreadsheetSchema

@@ -5,6 +5,6 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Lux.Spreadsheet.Core\Lux.Spreadsheet.Core.csproj" />
+    <ProjectReference Include="..\..\src\Klyroo.Spreadsheet.Core\Klyroo.Spreadsheet.Core.csproj" />
   </ItemGroup>
 </Project>

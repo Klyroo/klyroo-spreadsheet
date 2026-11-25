@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Lux.Spreadsheet;
+namespace Klyroo.Spreadsheet;
 
 /// <summary>Column data types in a <c>SpreadsheetSchema</c>.</summary>
 public enum SpreadsheetColumnKind
@@ -182,7 +182,7 @@ public sealed class SpreadsheetColumnSchema
     public string EffectiveLabel => Label ?? SpreadsheetImporter.HumanizeKey(Key);
 }
 
-/// <summary>Top-level declarative schema for <c>SpreadsheetImporter</c> and <c>LxSpreadsheetImport</c>.</summary>
+/// <summary>Top-level declarative schema for <c>SpreadsheetImporter</c> and <c>KlySpreadsheetImport</c>.</summary>
 public sealed class SpreadsheetSchema
 {
     public string Key { get; init; } = "import";

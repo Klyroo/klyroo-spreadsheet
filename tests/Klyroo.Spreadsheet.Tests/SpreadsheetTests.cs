@@ -2,13 +2,13 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace Lux.Spreadsheet.Tests;
+namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class SpreadsheetTests : BunitContext
 {
     public SpreadsheetTests()
     {
-        Services.AddLuxSpreadsheet();
+        Services.AddKlyrooSpreadsheet();
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class SpreadsheetTests : BunitContext
     }
 
     [Fact]
-    public async Task LxSpreadsheetImport_drives_wizard_steps_skips_resolved_steps_and_handles_batch_submit_rejections()
+    public async Task KlySpreadsheetImport_drives_wizard_steps_skips_resolved_steps_and_handles_batch_submit_rejections()
     {
         var badRowFailures = 0;
         var schema = new SpreadsheetSchema
@@ -151,7 +151,7 @@ public sealed class SpreadsheetTests : BunitContext
         };
 
         var importer = new SpreadsheetImporter(schema);
-        var cut = Render<LxSpreadsheetImport>(p => p.Add(x => x.Importer, importer));
+        var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         Assert.Equal("file", importer.CurrentStepKey);
         importer.LoadText("Name\nGoodRow\nBadRow", "users.csv");

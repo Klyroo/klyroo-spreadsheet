@@ -1,4 +1,4 @@
-# Recipes & Testing — Lux.Spreadsheet
+# Recipes & Testing — Klyroo.Spreadsheet
 
 ## Recipe 1: Resolving Unknown Values & Retrying Rejected Batches
 
@@ -11,7 +11,7 @@ if (importer.RejectedRows.Count > 0) await importer.RetryRejectedAsync();
 
 ## Recipe 2: Headless Unit Testing (`xUnit`)
 
-Test all business logic in `Lux.Spreadsheet.Core` without spinning up a browser or Blazor renderer:
+Test all business logic in `Klyroo.Spreadsheet.Core` without spinning up a browser or Blazor renderer:
 
 ```csharp
 using Xunit;
@@ -21,7 +21,7 @@ public sealed class SpreadsheetUnitTests
     [Fact]
     public void Headless_core_runs_without_ui_host()
     {
-        // Arrange & Act using Lux.Spreadsheet.Core directly
+        // Arrange & Act using Klyroo.Spreadsheet.Core directly
         // Assert deterministic outputs with zero JSInterop setup
     }
 }
@@ -38,9 +38,9 @@ public sealed class SpreadsheetComponentTests : BunitContext
 {
     public SpreadsheetComponentTests()
     {
-        Services.AddLuxSpreadsheet();
+        Services.AddKlyrooSpreadsheet();
     }
 }
 ```
 
-> **Tip**: Always register LuxStack services on `Services` **before** calling `SetRendererInfo(...)` in bUnit tests.
+> **Tip**: Always register Klyroo services on `Services` **before** calling `SetRendererInfo(...)` in bUnit tests.

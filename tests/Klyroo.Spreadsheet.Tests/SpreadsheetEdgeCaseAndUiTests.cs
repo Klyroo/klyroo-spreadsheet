@@ -1,15 +1,15 @@
 using Bunit;
-using Lux.Spreadsheet;
+using Klyroo.Spreadsheet;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace Lux.Spreadsheet.Tests;
+namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
 {
     public SpreadsheetEdgeCaseAndUiTests()
     {
-        Services.AddLuxSpreadsheet();
+        Services.AddKlyrooSpreadsheet();
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         };
 
         var importer = new SpreadsheetImporter(schema);
-        importer.LoadText("Email,City\nbad-email,Paris\nok@lux.dev,Lyon\nwrong,Bordeaux", "r.csv");
+        importer.LoadText("Email,City\nbad-email,Paris\nok@klyroo.dev,Lyon\nwrong,Bordeaux", "r.csv");
 
         // Issue row inspection cycling
         importer.InspectNextIssueRow();
@@ -147,7 +147,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         Assert.Equal(0, importer.InspectedRowIndex);
 
         // Edit & Revert cell
-        importer.EditCell(0, "email", "fixed@lux.dev");
+        importer.EditCell(0, "email", "fixed@klyroo.dev");
         Assert.Equal(2, importer.ImportableRows.Count);
         importer.RevertCell(0, "email");
         Assert.Single(importer.ImportableRows);
@@ -191,7 +191,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     }
 
     [Fact]
-    public void LxSpreadsheetImport_renders_columns_step_when_required_field_is_unmatched()
+    public void KlySpreadsheetImport_renders_columns_step_when_required_field_is_unmatched()
     {
         var schema = new SpreadsheetSchema
         {
@@ -204,7 +204,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         };
 
         var importer = new SpreadsheetImporter(schema);
-        var cut = Render<LxSpreadsheetImport>(p => p.Add(x => x.Importer, importer));
+        var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
         importer.LoadText("SKU,MysteryCol\nA1,abc", "u.csv");
         cut.Render();
 
