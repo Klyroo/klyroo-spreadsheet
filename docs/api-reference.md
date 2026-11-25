@@ -51,6 +51,12 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | :--- | :--- |
 | `SpreadsheetImporter(SpreadsheetSchema schema)` | Creates an importer for a schema, with no file loaded. |
 
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `const HeaderScanRows = 20` | `int` | How many leading rows of a sheet are scanned to find the header row. |
+| `const SuggestionPassRate = 0.8` | `double` | The share of sampled cells that must parse and pass the error-level rules before a file column is suggested for a missing column. |
+| `const SuggestionSampleSize = 30` | `int` | The maximum number of non-empty cells sampled from a file column when looking for a suggestion. |
+
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `AllRows` | `IReadOnlyList<SpreadsheetRow>` | Every data row after the header, discarded ones included. |
@@ -572,7 +578,7 @@ The decision recorded in a `SpreadsheetValueAnswer` for an unknown select value.
 
 ## Klyroo.Spreadsheet
 
-Components (1) · Static classes and extensions (1) · Classes (1)
+Components (1) · Static classes and extensions (1)
 
 ### Components
 
@@ -599,13 +605,3 @@ Service registration for Klyroo.Spreadsheet.
 | Method | Returns | Description |
 | :--- | :--- | :--- |
 | `static AddKlyrooSpreadsheet(IServiceCollection services)` | `IServiceCollection` | Registers the services `KlySpreadsheetImport` needs. It calls `AddKlyrooUi()` with its defaults, so call `AddKlyrooUi` with your own options before or after it, not instead of it. |
-
-### Classes
-
-#### `_Imports`
-
-`Klyroo.Spreadsheet` · class
-
-| Constructor | Description |
-| :--- | :--- |
-| `_Imports()` |  |
