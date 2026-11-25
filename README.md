@@ -1,139 +1,183 @@
 # Klyroo.Spreadsheet
 
-*Part of [Klyroo](https://klyroo.dev): Build better. Compose freely.*
+A .NET library that imports CSV, TSV and pasted spreadsheet data into your application, with column mapping, value mapping and row validation, for developers who build onboarding and bulk-edit screens.
 
-[![CI](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/badge/NuGet-0.1.0--preview.1-004880.svg)](https://www.nuget.org/packages/Klyroo.Spreadsheet) [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/) [![NativeAOT](https://img.shields.io/badge/NativeAOT-Compatible-10b981.svg)](https://klyroo.dev/why) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/vpre/Klyroo.Spreadsheet.svg)](https://www.nuget.org/packages/Klyroo.Spreadsheet)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Headless CSV/TSV importer, 20-row header detection, 80%-pass suggestions & batch retry**
+User files rarely match your model: the header is on row 3, a column is named differently, a status says "Gold" where you expect "pro". Klyroo.Spreadsheet puts the engine that deals with this in a headless package you can unit test, and adds a Blazor wizard on top of it. The engine runs anywhere .NET 10 runs, and the wizard runs in Blazor Web Apps and .NET MAUI Blazor Hybrid.
 
-100% NativeAOT spreadsheet import engine in Klyroo.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
+## Features
 
-[![MAUI Hybrid](https://img.shields.io/badge/.NET%20MAUI-Blazor%20Hybrid-8b5cf6.svg)](./docs/maui-and-aot.md)
+- **Header and sheet detection**: scans the first 20 rows of a sheet and picks the row where most schema columns match, so title rows above the header are skipped.
+- **Forgiving column matching**: compares headers ignoring case, accents, extra spaces, a trailing `*` and a trailing `(required)`, against the column key, its label and any aliases you list.
+- **Column suggestions**: when a required column has no match, proposes an unused file column if at least 80% of up to 30 sampled cells parse and pass the rules, and applies it only when you call `AssignColumn`.
+- **Typed parsing and rules**: text, number (either decimal mark), date, boolean and select columns, with built-in `Email`, `Pattern`, `Min`, `Max` and `Between` rules, custom rules and a cross-field `ValidateRow` callback.
+- **Unknown value questions**: turns select cells that match no option into questions you answer by mapping, leaving empty, skipping the rows or creating the value, or resolves them automatically with a per-column policy.
+- **Duplicates and existing records**: detects repeated keys inside the file, keeps the first or last, and marks rows whose key already exists as updates, skips or errors.
+- **Inline correction**: edits cells, discards and restores rows, filters the review by tab, severity, issue and text, all without touching the source file.
+- **Batched submit with retry**: sends importable rows to your callback in batches, shows the rows the server refused as errors on those rows, and sends only them again.
 
----
+## Packages
 
-## Architecture (Two-Layer Headless Split)
-
-- **`Klyroo.Spreadsheet.Core`** — 100% headless C#, zero UI dependencies, `<IsAotCompatible>true</IsAotCompatible>`, `<IsTrimmable>true</IsTrimmable>`. Runs in Minimal APIs, background workers, CLI apps, and native C# .NET MAUI ViewModels.
-- **`Klyroo.Spreadsheet`** — Multiplatform Blazor Web (Static SSR, Interactive Server, WebAssembly, Auto) & `.NET MAUI Blazor Hybrid` (`browser`, `ios`, `android`, `maccatalyst`, `windows`).
-
-## Highlights
-
-- **20-Row Heuristic Header Detection** (`Auto Header`) — Automatically skips export banners and title rows across the first 20 rows of a CSV/TSV or clipboard paste to locate the real header row.
-- **NFD Normalization & 80%-Pass Matching** (`Smart Mapping`) — Normalizes headers (accents, *, (required)) and suggests unmapped columns only when ≥80% of sample values pass type parsing and validation rules.
-- **Unknown Value Questions & Upsert** (`Reconciliation`) — Surfaces unknown select values as explicit mapping questions and resolves intra-file duplicates or updates against existing database records.
-- **Batch Submit & Retry Rejected Rows** (`Batch Retry`) — Submits validated rows in configurable batches and isolates server-rejected rows for inline correction and targeted retry.
-
-## Prerequisites
-
-- .NET 10 SDK or later.
-- A Blazor Web App (Static SSR, Interactive Server, WebAssembly or Auto) or a .NET MAUI Blazor Hybrid app for the UI
-  package; the `.Core` package runs anywhere .NET 10 runs, NativeAOT included.
-- For .NET MAUI: the `maui` workload (`dotnet workload install maui`).
+| Package | Description |
+| :--- | :--- |
+| [`Klyroo.Spreadsheet.Core`](https://www.nuget.org/packages/Klyroo.Spreadsheet.Core) | The import engine: parsing, matching, validation and submit. No UI dependency. |
+| [`Klyroo.Spreadsheet`](https://www.nuget.org/packages/Klyroo.Spreadsheet) | The `KlySpreadsheetImport` wizard for Blazor and .NET MAUI Blazor Hybrid, built on [Klyroo.UI](https://github.com/klyroo/klyroo-ui). Includes the Core package. |
 
 ## Installation
 
 ```bash
-dotnet add package Klyroo.Spreadsheet.Core   # Headless C# / NativeAOT / MAUI C#
-dotnet add package Klyroo.Spreadsheet        # Blazor Web & .NET MAUI Blazor Hybrid
+dotnet add package Klyroo.Spreadsheet.Core --prerelease   # engine only
+dotnet add package Klyroo.Spreadsheet --prerelease        # engine and Blazor wizard
 ```
 
-Register services in `Program.cs` (Blazor Web App) or `MauiProgram.cs` (.NET MAUI Blazor Hybrid):
+For the Blazor wizard, register the services in `Program.cs` (or `MauiProgram.cs`), import the namespace in `_Imports.razor`, and load the stylesheets after the ones of Klyroo.UI:
 
 ```csharp
 builder.Services.AddKlyrooSpreadsheet();
 ```
 
-## Quick Start
+```razor
+@using Klyroo.Spreadsheet
+```
 
-### Headless Core (`Klyroo.Spreadsheet.Core`)
+```html
+<link rel="stylesheet" href="_content/Klyroo.UI/klyroo.preflight.css" />
+<link rel="stylesheet" href="_content/Klyroo.UI/klyroo.css" />
+<link rel="stylesheet" href="_content/Klyroo.Spreadsheet/klyroo-spreadsheet.css" />
+```
+
+## Quick start
+
+Headless, with `Klyroo.Spreadsheet.Core`:
 
 ```csharp
 using Klyroo.Spreadsheet;
 
 var schema = new SpreadsheetSchema
 {
-    Key = "rates",
     Columns =
     [
-        new SpreadsheetColumnSchema { Key = "code", Label = "Code", Required = true },
-        new SpreadsheetColumnSchema { Key = "price", Label = "Unit Price", Kind = SpreadsheetColumnKind.Number, DecimalSeparator = ',', Rules = [SpreadsheetRule.Min(0)] },
-        new SpreadsheetColumnSchema { Key = "currency", Label = "Currency", Kind = SpreadsheetColumnKind.Select, Options = [new("EUR", "Euro", ["€", "EUR"]), new("USD", "US Dollar", ["$", "USD"])] }
-    ]
+        new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
+        new SpreadsheetColumnSchema
+        {
+            Key = "price",
+            Label = "Unit price",
+            Kind = SpreadsheetColumnKind.Number,
+            DecimalSeparator = ',',
+            Required = true,
+            Rules = [SpreadsheetRule.Min(0)],
+        },
+        new SpreadsheetColumnSchema
+        {
+            Key = "currency",
+            Kind = SpreadsheetColumnKind.Select,
+            Required = true,
+            Options = [new("EUR", "Euro", ["€"]), new("USD", "US dollar", ["$"])],
+        },
+    ],
+    OnSubmit = rows =>
+    {
+        foreach (var row in rows)
+        {
+            Console.WriteLine($"{row.Data["sku"]}: {row.Data["price"]} {row.Data["currency"]}");
+        }
+        return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null);
+    },
 };
 
 var importer = new SpreadsheetImporter(schema);
-importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass suggestions
+importer.LoadText("SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD", "prices.csv");
+
+Console.WriteLine(importer.ImportableRows.Count); // 1
+Console.WriteLine(importer.InvalidRows.Count);    // 1: A-2 has a negative price
+
+await importer.SubmitAsync();
 ```
 
-### Blazor Web & .NET MAUI Hybrid (`Klyroo.Spreadsheet`)
+In Blazor, give the same importer to `KlySpreadsheetImport`. The component does not read files itself, so load the text from an `InputFile`, a textarea or your own code:
 
 ```razor
-<KlySpreadsheetImport Importer="@_importer"
-                     Title="Import Product Rates"
-                     Wizard="true" />
+@page "/prices/import"
+@using Klyroo.Spreadsheet
+
+<InputFile OnChange="LoadFile" accept=".csv,.tsv,.txt" />
+
+<KlySpreadsheetImport Importer="_importer" Title="Import prices" />
+
+@code {
+    private const long MaxBytes = 5 * 1024 * 1024;
+    private SpreadsheetImporter _importer = default!;
+
+    protected override void OnInitialized()
+    {
+        _importer = new SpreadsheetImporter(new SpreadsheetSchema
+        {
+            Columns =
+            [
+                new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
+                new SpreadsheetColumnSchema { Key = "price", Kind = SpreadsheetColumnKind.Number, Required = true },
+            ],
+            OnSubmit = SaveAsync,
+        });
+    }
+
+    private async Task LoadFile(InputFileChangeEventArgs e)
+    {
+        using var reader = new StreamReader(e.File.OpenReadStream(MaxBytes));
+        _importer.LoadText(await reader.ReadToEndAsync(), e.File.Name);
+    }
+
+    private Task<IReadOnlyList<SpreadsheetRejectedRow>?> SaveAsync(IReadOnlyList<SpreadsheetRow> rows)
+    {
+        // Persist rows here. Return the rows the server refused, or null.
+        return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null);
+    }
+}
 ```
 
 ## Documentation
 
-| Guide | Description |
+| | |
 | :--- | :--- |
-| [Online documentation](https://docs.klyroo.dev/spreadsheet) | Guides, live examples and API reference |
-| [Getting Started](./docs/getting-started.md) | Installation, DI registration, stylesheets, and first working example |
-| [Architecture](./docs/architecture.md) | Headless `.Core` vs UI split, NativeAOT guarantees, and platform matrix |
-| [API Reference](./docs/api-reference.md) | Exhaustive reference of every public class, enum, property, method, and Razor parameter |
-| [MAUI & NativeAOT](./docs/maui-and-aot.md) | `.NET MAUI Blazor Hybrid` (`iOS`, `Android`, `macOS`, `Windows`) and NativeAOT deployment |
-| [Recipes & Testing](./docs/recipes.md) | End-to-end production patterns and `xUnit` / `bUnit` testing recipes |
-| [AI Agent Skill](./skills/klyroo-spreadsheet/SKILL.md) | Machine-readable guidance for coding agents |
+| [Getting started](docs/getting-started.md) | Step-by-step first integration |
+| [Guides](docs/guides.md) | Task-oriented recipes |
+| [Concepts](docs/concepts.md) | How the library works |
+| [Platforms](docs/platforms.md) | Render modes, .NET MAUI, NativeAOT |
+| [API reference](docs/api-reference.md) | Every public type and member |
+| [FAQ](docs/faq.md) | Troubleshooting and limitations |
 
-## Key Public Types
+## Requirements
 
-| Type | Kind | Package | Summary |
-| :--- | :--- | :--- | :--- |
-| `SpreadsheetColumnKind` | `enum` | `Klyroo.Spreadsheet.Core` | Column data types in a `SpreadsheetSchema`. |
-| `SpreadsheetUnknownValuePolicy` | `enum` | `Klyroo.Spreadsheet.Core` | Policy for unknown select values in `SpreadsheetColumnSchema`. |
-| `SpreadsheetDuplicatesPolicy` | `enum` | `Klyroo.Spreadsheet.Core` | Duplicate row key policy in `SpreadsheetSchema`. |
-| `SpreadsheetExistingAction` | `enum` | `Klyroo.Spreadsheet.Core` | Action taken when an imported row matches an existing stored record. |
-| `SpreadsheetColumnStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Status of a column mapping in `SpreadsheetImporter`. |
-| `SpreadsheetIssueLevel` | `enum` | `Klyroo.Spreadsheet.Core` | Severity level of a `SpreadsheetRowIssue`. |
-| `SpreadsheetRowStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Overall validation status of a `SpreadsheetRow`. |
-| `SpreadsheetDiscardReason` | `enum` | `Klyroo.Spreadsheet.Core` | Reason why a `SpreadsheetRow` was discarded from import. |
-| `SpreadsheetRowMode` | `enum` | `Klyroo.Spreadsheet.Core` | Import mode of a `SpreadsheetRow`. |
-| `SpreadsheetReviewTab` | `enum` | `Klyroo.Spreadsheet.Core` | Review table tab filter in `SpreadsheetImporter`. |
-| `SpreadsheetReviewLevel` | `enum` | `Klyroo.Spreadsheet.Core` | Review issue level filter in `SpreadsheetImporter`. |
-| `SpreadsheetValueAnswerAction` | `enum` | `Klyroo.Spreadsheet.Core` | Action chosen for an unrecognized select value in `SpreadsheetValueQuestion`. |
-| `SpreadsheetSubmitStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Submission lifecycle state of `SpreadsheetImporter`. |
-| `SpreadsheetOption` | `record` | `Klyroo.Spreadsheet.Core` | An allowed select option with optional aliases for exact normalized matching. |
-| `SpreadsheetRule` | `record` | `Klyroo.Spreadsheet.Core` | A validation rule attached to a `SpreadsheetColumnSchema`. |
-| `SpreadsheetColumnSchema` | `class` | `Klyroo.Spreadsheet.Core` | Declarative definition of a spreadsheet column. |
-| `SpreadsheetSchema` | `class` | `Klyroo.Spreadsheet.Core` | Top-level declarative schema for `SpreadsheetImporter` and `KlySpreadsheetImport`. |
-| `SpreadsheetRejectedRow` | `record` | `Klyroo.Spreadsheet.Core` | A server-side rejection reported for a specific row index during submit. |
+- .NET 10 SDK.
+- `Klyroo.Spreadsheet.Core` targets `net10.0`, has no package dependencies and is marked `IsTrimmable` and `IsAotCompatible`.
+- `Klyroo.Spreadsheet` needs an interactive render mode (Interactive Server, WebAssembly or Auto): the component handles events through Blazor, so under Static SSR it renders but does not respond.
+- `Klyroo.Spreadsheet` declares the `browser`, `ios`, `android`, `maccatalyst` and `windows` platforms for .NET MAUI Blazor Hybrid.
+- Only delimited text (CSV, TSV, semicolon-separated) is parsed. Excel files need your own reader, see [Read an Excel file](docs/guides.md#read-an-excel-file).
 
-## Razor Components
+## Klyroo ecosystem
 
-| Component | Package | Parameters | Source |
-| :--- | :--- | :--- | :--- |
-| `<KlySpreadsheetImport>` | `Klyroo.Spreadsheet` | 3 parameters | `src/Klyroo.Spreadsheet/KlySpreadsheetImport.razor` |
+Klyroo is a family of independent .NET libraries that compose. Each one has its own repository, versions and releases.
 
-## Building & Testing
-
-```bash
-dotnet build
-dotnet test
-dotnet pack -c Release
-```
+| Library | Description |
+| :--- | :--- |
+| [Klyroo.UI](https://github.com/klyroo/klyroo-ui) | Accessible Blazor and .NET MAUI Hybrid components styled with Tailwind CSS v4 |
+| [Klyroo.Query](https://github.com/klyroo/klyroo-query) | Typed query model, URL codecs and IQueryable / EF Core execution |
+| [Klyroo.Table](https://github.com/klyroo/klyroo-table) | Data lists and trees built on Klyroo.Query |
+| [Klyroo.Form](https://github.com/klyroo/klyroo-form) | Schema-driven forms, validation and wizards |
+| [Klyroo.Dashboard](https://github.com/klyroo/klyroo-dashboard) | Analytical dashboards with filters, comparisons and KPI blocks |
+| [Klyroo.Display](https://github.com/klyroo/klyroo-display) | Read-only display blocks, media players and file preview |
+| [**Klyroo.Spreadsheet**](https://github.com/klyroo/klyroo-spreadsheet) | CSV and TSV import with column mapping and validation |
+| [Klyroo.Agent](https://github.com/klyroo/klyroo-agent) | Bridge that lets AI agents read and act on a Blazor UI |
+| [Klyroo.Stack](https://github.com/klyroo/klyroo-stack) | Meta-package, MCP server and `dotnet new` templates |
 
 ## Contributing
 
-Issues and pull requests are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow (Conventional
-Commits, tests, documentation), follow the [Code of Conduct](./CODE_OF_CONDUCT.md), and report vulnerabilities
-privately as described in [SECURITY.md](./SECURITY.md).
-
-## Migrating from Lux
-
-This library was previously named `lux-spreadsheet`. [MIGRATION.md](./MIGRATION.md) lists every renamed package, namespace,
-component, CSS token and build setting.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and follow the
+[code of conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT — see [LICENSE](./LICENSE). Part of the **[Klyroo](../klyroo-stack/README.md)** ecosystem.
+[MIT](LICENSE)

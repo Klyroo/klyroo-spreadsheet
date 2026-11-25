@@ -151,8 +151,11 @@
     private (int RowIndex, string FieldKey)? _editingCell;
     private string _editingText = "";
 
+    /// <summary>The importer that holds the import state. The component renders it and calls its methods; it does not load a file, so call <see cref="SpreadsheetImporter.LoadText"/> or <see cref="SpreadsheetImporter.LoadWorkbook"/> yourself.</summary>
     [Parameter] public required SpreadsheetImporter Importer { get; set; }
+    /// <summary>The heading shown above the wizard. Defaults to <c>Import</c>.</summary>
     [Parameter] public string Title { get; set; } = "Import";
+    /// <summary>Shows the step bar and the Back, Continue and Import buttons. When <see langword="false"/> only the current step is rendered and your code moves between steps with the importer's step methods.</summary>
     [Parameter] public bool Wizard { get; set; } = true;
 
     private string RootClass =>

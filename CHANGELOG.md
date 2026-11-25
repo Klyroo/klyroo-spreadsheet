@@ -1,21 +1,23 @@
 # Changelog
 
-All notable changes to **klyroo-spreadsheet** are documented in this file.
+All notable changes to this project are documented in this file. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
 
 ## [0.1.0-preview.1] - 2026-11-24
 
-### Changed
-- **BREAKING:** the project joins the Klyroo ecosystem. Packages, namespaces, types, components (`Lx*` to `Kly*`),
-  CSS tokens (`--lux-*` to `--klyroo-*`), MSBuild properties and diagnostics are renamed. See
-  [MIGRATION.md](./MIGRATION.md).
-- Klyroo visual identity: Klyroo Lime (`#b6ff00`) on Charcoal (`#0b0f14`) as the default primary palette.
-
 ### Added
-- Initial preview release on `.NET 10`: 5-step CSV/TSV/workbook importer with 20-row header detection, Unicode NFD mapping, 80% scoring, reconciliation, and batch retry.
-- Clean two-layer architecture (`*.Core` 100% Headless / NativeAOT + multiplatform Blazor Web & .NET MAUI Blazor Hybrid UI).
-- Comprehensive xUnit / bUnit / EF Core SQLite test suite and GitHub Actions CI/Release NuGet pipelines.
-- Full English documentation, cross-library integration guides, and interactive live examples at https://klyroo.dev.
-- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `.editorconfig`, issue and pull request templates,
-  Dependabot configuration.
-- Release workflow with version/tag check, NuGet metadata verification, Trusted Publishing (OIDC), an approval gate
-  (`nuget` environment) and GitHub Release notes taken from this changelog.
+
+- `Klyroo.Spreadsheet.Core`: a headless `SpreadsheetImporter` that loads CSV, TSV and pasted text, or a workbook you parse yourself, and detects the sheet, the separator and the header row.
+- Column mapping by normalized header names and aliases, manual assignment, and suggestions for missing required columns based on sample values.
+- Typed parsing for text, number, date, boolean and select columns, with built-in and custom rules, a cross-field `ValidateRow` callback and per-cell issues with stable codes.
+- Resolution of unknown select values by answering, or by a per-column policy to leave empty, skip rows, create the value or fail.
+- Duplicate key detection inside a file and handling of rows that match existing records as updates, skips or errors.
+- Inline cell editing, row discard and restore, review filters, and CSV export of a template and of invalid rows.
+- Batched submit through `OnSubmit` with per-row server rejections and a retry of the rejected rows.
+- `Klyroo.Spreadsheet`: the `KlySpreadsheetImport` wizard for Blazor and .NET MAUI Blazor Hybrid, with column and value mapping, an editable review table, a row inspector and a precompiled stylesheet, registered with `AddKlyrooSpreadsheet()`.
+
+[Unreleased]: https://github.com/klyroo/klyroo-spreadsheet/compare/v0.1.0-preview.1...HEAD
+[0.1.0-preview.1]: https://github.com/klyroo/klyroo-spreadsheet/releases/tag/v0.1.0-preview.1
