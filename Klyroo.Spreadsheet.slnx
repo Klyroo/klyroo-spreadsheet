@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Klyroo.Spreadsheet.Core/Klyroo.Spreadsheet.Core.csproj" />
+    <Project Path="src/Klyroo.Spreadsheet/Klyroo.Spreadsheet.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Klyroo.Spreadsheet.Tests/Klyroo.Spreadsheet.Tests.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/HeadlessSpreadsheetExample/HeadlessSpreadsheetExample.csproj" />
+  </Folder>
+</Solution>

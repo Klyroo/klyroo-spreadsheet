@@ -1,7 +1,7 @@
-using Lux.Spreadsheet;
+using Klyroo.Spreadsheet;
 using Xunit;
 
-namespace Lux.Spreadsheet.Tests;
+namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class ComprehensiveSpreadsheetTests
 {

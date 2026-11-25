@@ -1,11 +1,11 @@
-# API Reference — Lux.Spreadsheet
+# API Reference — Klyroo.Spreadsheet
 
-Complete public API reference extracted directly from the source code of `Lux.Spreadsheet.Core` and `Lux.Spreadsheet`.
+Complete public API reference extracted directly from the source code of `Klyroo.Spreadsheet.Core` and `Klyroo.Spreadsheet`.
 
 ## Razor Components
 
-### `<LxSpreadsheetImport>`
-*Package*: `Lux.Spreadsheet` · *Source*: `src/Lux.Spreadsheet/LxSpreadsheetImport.razor`
+### `<KlySpreadsheetImport>`
+*Package*: `Klyroo.Spreadsheet` · *Source*: `src/Klyroo.Spreadsheet/KlySpreadsheetImport.razor`
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
@@ -16,7 +16,7 @@ Complete public API reference extracted directly from the source code of `Lux.Sp
 ## C# Types, Controllers, Models & Enums
 
 ### `enum SpreadsheetColumnKind`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Column data types in a `SpreadsheetSchema`.
 
@@ -29,7 +29,7 @@ Column data types in a `SpreadsheetSchema`.
 | `Select` | `enum member` | — |
 
 ### `enum SpreadsheetUnknownValuePolicy`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Policy for unknown select values in `SpreadsheetColumnSchema`.
 
@@ -42,7 +42,7 @@ Policy for unknown select values in `SpreadsheetColumnSchema`.
 | `Create` | `enum member` | — |
 
 ### `enum SpreadsheetDuplicatesPolicy`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Duplicate row key policy in `SpreadsheetSchema`.
 
@@ -53,7 +53,7 @@ Duplicate row key policy in `SpreadsheetSchema`.
 | `KeepLast` | `enum member` | — |
 
 ### `enum SpreadsheetExistingAction`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Action taken when an imported row matches an existing stored record.
 
@@ -64,7 +64,7 @@ Action taken when an imported row matches an existing stored record.
 | `Error` | `enum member` | — |
 
 ### `enum SpreadsheetColumnStatus`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Status of a column mapping in `SpreadsheetImporter`.
 
@@ -76,7 +76,7 @@ Status of a column mapping in `SpreadsheetImporter`.
 | `Unmatched` | `enum member` | — |
 
 ### `enum SpreadsheetIssueLevel`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Severity level of a `SpreadsheetRowIssue`.
 
@@ -87,7 +87,7 @@ Severity level of a `SpreadsheetRowIssue`.
 | `Error` | `enum member` | — |
 
 ### `enum SpreadsheetRowStatus`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Overall validation status of a `SpreadsheetRow`.
 
@@ -99,7 +99,7 @@ Overall validation status of a `SpreadsheetRow`.
 | `Discarded` | `enum member` | — |
 
 ### `enum SpreadsheetDiscardReason`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Reason why a `SpreadsheetRow` was discarded from import.
 
@@ -112,7 +112,7 @@ Reason why a `SpreadsheetRow` was discarded from import.
 | `Existing` | `enum member` | — |
 
 ### `enum SpreadsheetRowMode`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Import mode of a `SpreadsheetRow`.
 
@@ -123,7 +123,7 @@ Import mode of a `SpreadsheetRow`.
 | `Skip` | `enum member` | — |
 
 ### `enum SpreadsheetReviewTab`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Review table tab filter in `SpreadsheetImporter`.
 
@@ -135,7 +135,7 @@ Review table tab filter in `SpreadsheetImporter`.
 | `Discarded` | `enum member` | — |
 
 ### `enum SpreadsheetReviewLevel`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Review issue level filter in `SpreadsheetImporter`.
 
@@ -146,7 +146,7 @@ Review issue level filter in `SpreadsheetImporter`.
 | `Warnings` | `enum member` | — |
 
 ### `enum SpreadsheetValueAnswerAction`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Action chosen for an unrecognized select value in `SpreadsheetValueQuestion`.
 
@@ -158,7 +158,7 @@ Action chosen for an unrecognized select value in `SpreadsheetValueQuestion`.
 | `Create` | `enum member` | — |
 
 ### `enum SpreadsheetSubmitStatus`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Submission lifecycle state of `SpreadsheetImporter`.
 
@@ -170,12 +170,12 @@ Submission lifecycle state of `SpreadsheetImporter`.
 | `Error` | `enum member` | — |
 
 ### `record SpreadsheetOption`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 An allowed select option with optional aliases for exact normalized matching.
 
 ### `record SpreadsheetRule`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 A validation rule attached to a `SpreadsheetColumnSchema`.
 
@@ -188,7 +188,7 @@ A validation rule attached to a `SpreadsheetColumnSchema`.
 | `Between(double min, double max, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error)` | `SpreadsheetRule` | — |
 
 ### `class SpreadsheetColumnSchema`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Declarative definition of a spreadsheet column.
 
@@ -216,9 +216,9 @@ Declarative definition of a spreadsheet column.
 | `EffectiveLabel` | `string` | — |
 
 ### `class SpreadsheetSchema`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
-Top-level declarative schema for `SpreadsheetImporter` and `LxSpreadsheetImport`.
+Top-level declarative schema for `SpreadsheetImporter` and `KlySpreadsheetImport`.
 
 | Member | Type | Description |
 | :--- | :--- | :--- |
@@ -237,37 +237,37 @@ Top-level declarative schema for `SpreadsheetImporter` and `LxSpreadsheetImport`
 | `OnSubmit` | `Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | — |
 
 ### `record SpreadsheetRejectedRow`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 A server-side rejection reported for a specific row index during submit.
 
 ### `record SpreadsheetSheet`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 One parsed sheet in a `SpreadsheetWorkbook`.
 
 ### `record SpreadsheetWorkbook`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 A parsed workbook containing one or more sheets.
 
 ### `record SpreadsheetColumnSuggestion`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 A column suggestion offered for a missing required field when an unused header's sample values pass validation.
 
 ### `record SpreadsheetFieldState`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 State of a column field in `SpreadsheetImporter`.
 
 ### `record SpreadsheetValueAnswer`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 User or policy answer for an unrecognized select value.
 
 ### `record SpreadsheetValueQuestion`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 An open or answered question for an unknown select token in the imported file.
 
@@ -276,27 +276,27 @@ An open or answered question for an unknown select token in the imported file.
 | `IsOpen` | `bool` | — |
 
 ### `record SpreadsheetRowIssue`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 An issue attached to a specific field or row in `SpreadsheetRow`.
 
 ### `record SpreadsheetCellView`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 View model for one cell in a `SpreadsheetRow`.
 
 ### `record SpreadsheetRow`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Parsed state of one data row in `SpreadsheetImporter`.
 
 ### `record SpreadsheetStepStatus`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Status of a wizard step in `SpreadsheetImporter`.
 
 ### `class SpreadsheetImporter`
-*Package*: `Lux.Spreadsheet.Core` · *Source*: `src/Lux.Spreadsheet.Core/SpreadsheetModels.cs`
+*Package*: `Klyroo.Spreadsheet.Core` · *Source*: `src/Klyroo.Spreadsheet.Core/SpreadsheetModels.cs`
 
 Headless spreadsheet import engine: handles delimited file/clipboard parsing, automatic sheet &amp; header-row detection, deterministic normalized column matching, 80%-pass column suggestions, unknown value resolution, duplicate &amp; existing key checks, inline cell editing, review filtering, wizard steps, and batched submission.
 
@@ -343,9 +343,9 @@ Headless spreadsheet import engine: handles delimited file/clipboard parsing, au
 | `SetHeaderRow(int rowIndex)` | `void` | — |
 | `AssignColumn(string fieldKey, int headerIndex)` | `void` | — |
 
-### `class LuxSpreadsheetServiceCollectionExtensions`
-*Package*: `Lux.Spreadsheet` · *Source*: `src/Lux.Spreadsheet/LuxSpreadsheetServiceCollectionExtensions.cs`
+### `class KlyrooSpreadsheetServiceCollectionExtensions`
+*Package*: `Klyroo.Spreadsheet` · *Source*: `src/Klyroo.Spreadsheet/KlyrooSpreadsheetServiceCollectionExtensions.cs`
 
 | Member | Type | Description |
 | :--- | :--- | :--- |
-| `AddLuxSpreadsheet(this IServiceCollection services)` | `IServiceCollection` | — |
+| `AddKlyrooSpreadsheet(this IServiceCollection services)` | `IServiceCollection` | — |

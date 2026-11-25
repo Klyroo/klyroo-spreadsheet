@@ -1,22 +1,21 @@
-# Lux.Spreadsheet (LuxStack)
+# Klyroo.Spreadsheet
 
-[![CI](https://github.com/luxstack/lux-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/luxstack/lux-spreadsheet/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/badge/NuGet-0.1.0--preview.1-004880.svg)](https://www.nuget.org/packages/Lux.Spreadsheet) [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/) [![NativeAOT](https://img.shields.io/badge/NativeAOT-Compatible-10b981.svg)](https://luxstack.dev/why) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+*Part of [Klyroo](https://klyroo.dev): Build better. Compose freely.*
+
+[![CI](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/badge/NuGet-0.1.0--preview.1-004880.svg)](https://www.nuget.org/packages/Klyroo.Spreadsheet) [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/) [![NativeAOT](https://img.shields.io/badge/NativeAOT-Compatible-10b981.svg)](https://klyroo.dev/why) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 > **Headless CSV/TSV importer, 20-row header detection, 80%-pass suggestions & batch retry**
 
-100% NativeAOT spreadsheet import engine in Lux.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
+100% NativeAOT spreadsheet import engine in Klyroo.Spreadsheet.Core: 20-row heuristic header layout detection, NFD accent-insensitive normalization, ≥80% pass-rate column suggestions, unknown value resolution questions, duplicate & existing record upsert policies, inline cell edits, and batched submission with rejected-row retry.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
-[![NativeAOT](https://img.shields.io/badge/Core-NativeAOT%20Ready-10b981.svg)](./docs/maui-and-aot.md)
 [![MAUI Hybrid](https://img.shields.io/badge/.NET%20MAUI-Blazor%20Hybrid-8b5cf6.svg)](./docs/maui-and-aot.md)
 
 ---
 
 ## Architecture (Two-Layer Headless Split)
 
-- **`Lux.Spreadsheet.Core`** — 100% headless C#, zero UI dependencies, `<IsAotCompatible>true</IsAotCompatible>`, `<IsTrimmable>true</IsTrimmable>`. Runs in Minimal APIs, background workers, CLI apps, and native C# .NET MAUI ViewModels.
-- **`Lux.Spreadsheet`** — Multiplatform Blazor Web (Static SSR, Interactive Server, WebAssembly, Auto) & `.NET MAUI Blazor Hybrid` (`browser`, `ios`, `android`, `maccatalyst`, `windows`).
+- **`Klyroo.Spreadsheet.Core`** — 100% headless C#, zero UI dependencies, `<IsAotCompatible>true</IsAotCompatible>`, `<IsTrimmable>true</IsTrimmable>`. Runs in Minimal APIs, background workers, CLI apps, and native C# .NET MAUI ViewModels.
+- **`Klyroo.Spreadsheet`** — Multiplatform Blazor Web (Static SSR, Interactive Server, WebAssembly, Auto) & `.NET MAUI Blazor Hybrid` (`browser`, `ios`, `android`, `maccatalyst`, `windows`).
 
 ## Highlights
 
@@ -25,25 +24,32 @@
 - **Unknown Value Questions & Upsert** (`Reconciliation`) — Surfaces unknown select values as explicit mapping questions and resolves intra-file duplicates or updates against existing database records.
 - **Batch Submit & Retry Rejected Rows** (`Batch Retry`) — Submits validated rows in configurable batches and isolates server-rejected rows for inline correction and targeted retry.
 
+## Prerequisites
+
+- .NET 10 SDK or later.
+- A Blazor Web App (Static SSR, Interactive Server, WebAssembly or Auto) or a .NET MAUI Blazor Hybrid app for the UI
+  package; the `.Core` package runs anywhere .NET 10 runs, NativeAOT included.
+- For .NET MAUI: the `maui` workload (`dotnet workload install maui`).
+
 ## Installation
 
 ```bash
-dotnet add package Lux.Spreadsheet.Core   # Headless C# / NativeAOT / MAUI C#
-dotnet add package Lux.Spreadsheet        # Blazor Web & .NET MAUI Blazor Hybrid
+dotnet add package Klyroo.Spreadsheet.Core   # Headless C# / NativeAOT / MAUI C#
+dotnet add package Klyroo.Spreadsheet        # Blazor Web & .NET MAUI Blazor Hybrid
 ```
 
 Register services in `Program.cs` (Blazor Web App) or `MauiProgram.cs` (.NET MAUI Blazor Hybrid):
 
 ```csharp
-builder.Services.AddLuxSpreadsheet();
+builder.Services.AddKlyrooSpreadsheet();
 ```
 
 ## Quick Start
 
-### Headless Core (`Lux.Spreadsheet.Core`)
+### Headless Core (`Klyroo.Spreadsheet.Core`)
 
 ```csharp
-using Lux.Spreadsheet;
+using Klyroo.Spreadsheet;
 
 var schema = new SpreadsheetSchema
 {
@@ -60,10 +66,10 @@ var importer = new SpreadsheetImporter(schema);
 importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass suggestions
 ```
 
-### Blazor Web & .NET MAUI Hybrid (`Lux.Spreadsheet`)
+### Blazor Web & .NET MAUI Hybrid (`Klyroo.Spreadsheet`)
 
 ```razor
-<LxSpreadsheetImport Importer="@_importer"
+<KlySpreadsheetImport Importer="@_importer"
                      Title="Import Product Rates"
                      Wizard="true" />
 ```
@@ -72,41 +78,42 @@ importer.LoadText(csvText, "rates.csv"); // Auto-detects header row & 80%-pass s
 
 | Guide | Description |
 | :--- | :--- |
+| [Online documentation](https://docs.klyroo.dev/spreadsheet) | Guides, live examples and API reference |
 | [Getting Started](./docs/getting-started.md) | Installation, DI registration, stylesheets, and first working example |
 | [Architecture](./docs/architecture.md) | Headless `.Core` vs UI split, NativeAOT guarantees, and platform matrix |
 | [API Reference](./docs/api-reference.md) | Exhaustive reference of every public class, enum, property, method, and Razor parameter |
 | [MAUI & NativeAOT](./docs/maui-and-aot.md) | `.NET MAUI Blazor Hybrid` (`iOS`, `Android`, `macOS`, `Windows`) and NativeAOT deployment |
 | [Recipes & Testing](./docs/recipes.md) | End-to-end production patterns and `xUnit` / `bUnit` testing recipes |
-| [AI Agent Skill](./skills/lux-spreadsheet/SKILL.md) | Machine-readable guidance for coding agents |
+| [AI Agent Skill](./skills/klyroo-spreadsheet/SKILL.md) | Machine-readable guidance for coding agents |
 
 ## Key Public Types
 
 | Type | Kind | Package | Summary |
 | :--- | :--- | :--- | :--- |
-| `SpreadsheetColumnKind` | `enum` | `Lux.Spreadsheet.Core` | Column data types in a `SpreadsheetSchema`. |
-| `SpreadsheetUnknownValuePolicy` | `enum` | `Lux.Spreadsheet.Core` | Policy for unknown select values in `SpreadsheetColumnSchema`. |
-| `SpreadsheetDuplicatesPolicy` | `enum` | `Lux.Spreadsheet.Core` | Duplicate row key policy in `SpreadsheetSchema`. |
-| `SpreadsheetExistingAction` | `enum` | `Lux.Spreadsheet.Core` | Action taken when an imported row matches an existing stored record. |
-| `SpreadsheetColumnStatus` | `enum` | `Lux.Spreadsheet.Core` | Status of a column mapping in `SpreadsheetImporter`. |
-| `SpreadsheetIssueLevel` | `enum` | `Lux.Spreadsheet.Core` | Severity level of a `SpreadsheetRowIssue`. |
-| `SpreadsheetRowStatus` | `enum` | `Lux.Spreadsheet.Core` | Overall validation status of a `SpreadsheetRow`. |
-| `SpreadsheetDiscardReason` | `enum` | `Lux.Spreadsheet.Core` | Reason why a `SpreadsheetRow` was discarded from import. |
-| `SpreadsheetRowMode` | `enum` | `Lux.Spreadsheet.Core` | Import mode of a `SpreadsheetRow`. |
-| `SpreadsheetReviewTab` | `enum` | `Lux.Spreadsheet.Core` | Review table tab filter in `SpreadsheetImporter`. |
-| `SpreadsheetReviewLevel` | `enum` | `Lux.Spreadsheet.Core` | Review issue level filter in `SpreadsheetImporter`. |
-| `SpreadsheetValueAnswerAction` | `enum` | `Lux.Spreadsheet.Core` | Action chosen for an unrecognized select value in `SpreadsheetValueQuestion`. |
-| `SpreadsheetSubmitStatus` | `enum` | `Lux.Spreadsheet.Core` | Submission lifecycle state of `SpreadsheetImporter`. |
-| `SpreadsheetOption` | `record` | `Lux.Spreadsheet.Core` | An allowed select option with optional aliases for exact normalized matching. |
-| `SpreadsheetRule` | `record` | `Lux.Spreadsheet.Core` | A validation rule attached to a `SpreadsheetColumnSchema`. |
-| `SpreadsheetColumnSchema` | `class` | `Lux.Spreadsheet.Core` | Declarative definition of a spreadsheet column. |
-| `SpreadsheetSchema` | `class` | `Lux.Spreadsheet.Core` | Top-level declarative schema for `SpreadsheetImporter` and `LxSpreadsheetImport`. |
-| `SpreadsheetRejectedRow` | `record` | `Lux.Spreadsheet.Core` | A server-side rejection reported for a specific row index during submit. |
+| `SpreadsheetColumnKind` | `enum` | `Klyroo.Spreadsheet.Core` | Column data types in a `SpreadsheetSchema`. |
+| `SpreadsheetUnknownValuePolicy` | `enum` | `Klyroo.Spreadsheet.Core` | Policy for unknown select values in `SpreadsheetColumnSchema`. |
+| `SpreadsheetDuplicatesPolicy` | `enum` | `Klyroo.Spreadsheet.Core` | Duplicate row key policy in `SpreadsheetSchema`. |
+| `SpreadsheetExistingAction` | `enum` | `Klyroo.Spreadsheet.Core` | Action taken when an imported row matches an existing stored record. |
+| `SpreadsheetColumnStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Status of a column mapping in `SpreadsheetImporter`. |
+| `SpreadsheetIssueLevel` | `enum` | `Klyroo.Spreadsheet.Core` | Severity level of a `SpreadsheetRowIssue`. |
+| `SpreadsheetRowStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Overall validation status of a `SpreadsheetRow`. |
+| `SpreadsheetDiscardReason` | `enum` | `Klyroo.Spreadsheet.Core` | Reason why a `SpreadsheetRow` was discarded from import. |
+| `SpreadsheetRowMode` | `enum` | `Klyroo.Spreadsheet.Core` | Import mode of a `SpreadsheetRow`. |
+| `SpreadsheetReviewTab` | `enum` | `Klyroo.Spreadsheet.Core` | Review table tab filter in `SpreadsheetImporter`. |
+| `SpreadsheetReviewLevel` | `enum` | `Klyroo.Spreadsheet.Core` | Review issue level filter in `SpreadsheetImporter`. |
+| `SpreadsheetValueAnswerAction` | `enum` | `Klyroo.Spreadsheet.Core` | Action chosen for an unrecognized select value in `SpreadsheetValueQuestion`. |
+| `SpreadsheetSubmitStatus` | `enum` | `Klyroo.Spreadsheet.Core` | Submission lifecycle state of `SpreadsheetImporter`. |
+| `SpreadsheetOption` | `record` | `Klyroo.Spreadsheet.Core` | An allowed select option with optional aliases for exact normalized matching. |
+| `SpreadsheetRule` | `record` | `Klyroo.Spreadsheet.Core` | A validation rule attached to a `SpreadsheetColumnSchema`. |
+| `SpreadsheetColumnSchema` | `class` | `Klyroo.Spreadsheet.Core` | Declarative definition of a spreadsheet column. |
+| `SpreadsheetSchema` | `class` | `Klyroo.Spreadsheet.Core` | Top-level declarative schema for `SpreadsheetImporter` and `KlySpreadsheetImport`. |
+| `SpreadsheetRejectedRow` | `record` | `Klyroo.Spreadsheet.Core` | A server-side rejection reported for a specific row index during submit. |
 
 ## Razor Components
 
 | Component | Package | Parameters | Source |
 | :--- | :--- | :--- | :--- |
-| `<LxSpreadsheetImport>` | `Lux.Spreadsheet` | 3 parameters | `src/Lux.Spreadsheet/LxSpreadsheetImport.razor` |
+| `<KlySpreadsheetImport>` | `Klyroo.Spreadsheet` | 3 parameters | `src/Klyroo.Spreadsheet/KlySpreadsheetImport.razor` |
 
 ## Building & Testing
 
@@ -116,6 +123,17 @@ dotnet test
 dotnet pack -c Release
 ```
 
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow (Conventional
+Commits, tests, documentation), follow the [Code of Conduct](./CODE_OF_CONDUCT.md), and report vulnerabilities
+privately as described in [SECURITY.md](./SECURITY.md).
+
+## Migrating from Lux
+
+This library was previously named `lux-spreadsheet`. [MIGRATION.md](./MIGRATION.md) lists every renamed package, namespace,
+component, CSS token and build setting.
+
 ## License
 
-MIT — see [LICENSE](./LICENSE). Part of the **[LuxStack](../lux.stack/README.md)** ecosystem.
+MIT — see [LICENSE](./LICENSE). Part of the **[Klyroo](../klyroo-stack/README.md)** ecosystem.

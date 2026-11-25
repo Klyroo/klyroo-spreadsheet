@@ -1,16 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Lux.Spreadsheet</RootNamespace>
-    <PackageId>Lux.Spreadsheet</PackageId>
-    <Description>LuxStack Spreadsheet Import wizard, column/value mapping, inline review table and row inspector for Blazor Web &amp; .NET MAUI Hybrid.</Description>
+    <RootNamespace>Klyroo.Spreadsheet</RootNamespace>
+    <PackageId>Klyroo.Spreadsheet</PackageId>
+    <Description>Klyroo Spreadsheet Import wizard, column/value mapping, inline review table and row inspector for Blazor Web &amp; .NET MAUI Hybrid.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591;BL0007</NoWarn>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Lux.Spreadsheet.Core\Lux.Spreadsheet.Core.csproj" />
-    <ProjectReference Include="..\..\..\lux-ui\src\Lux.UI\Lux.UI.csproj" />
+    <ProjectReference Include="..\Klyroo.Spreadsheet.Core\Klyroo.Spreadsheet.Core.csproj" />
+    <ProjectReference Include="..\..\..\klyroo-ui\src\Klyroo.UI\Klyroo.UI.csproj" />
   </ItemGroup>
   <ItemGroup>
     <SupportedPlatform Include="browser" />
@@ -20,6 +20,6 @@
     <SupportedPlatform Include="windows" />
   </ItemGroup>
   <ItemGroup>
-    <Using Include="Lux.UI" />
+    <Using Include="Klyroo.UI" />
   </ItemGroup>
 </Project>
