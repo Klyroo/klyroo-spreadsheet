@@ -45,6 +45,29 @@ internal static class SpreadsheetValueConverter
         _ => value.ToString() ?? "",
     };
 
+    /// <summary>
+    /// The text of a row key: the one <c>ExistingRecords</c> is looked up with and <c>LookupExistingRecordsAsync</c> receives. It never depends on the culture.
+    /// A <see cref="DateOnly"/> is <c>yyyy-MM-dd</c>, a <see cref="DateTime"/> is <c>yyyy-MM-dd</c> at midnight and otherwise <c>yyyy-MM-ddTHH:mm</c> or <c>yyyy-MM-ddTHH:mm:ss</c>
+    /// (the text the importer gave date keys before columns were typed), a <see cref="DateTimeOffset"/> is that text for its UTC instant, and a number has no trailing zeros
+    /// (<c>12.50</c> is <c>12.5</c>). Every other value is its invariant text.
+    /// </summary>
+    internal static string KeyText(object? value) => value switch
+    {
+        DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        DateTime dt => IsoDateTime(dt),
+        DateTimeOffset o => IsoDateTime(o.UtcDateTime),
+        decimal m => (m / 1.000000000000000000000000000000000m).ToString(CultureInfo.InvariantCulture),
+        _ => Format(value),
+    };
+
+    // yyyy-MM-dd at midnight, otherwise with the time to the minute, or to the second when it has seconds.
+    internal static string IsoDateTime(DateTime dt) =>
+        dt.TimeOfDay == TimeSpan.Zero
+            ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : dt.Second == 0 && dt.Ticks % TimeSpan.TicksPerSecond == 0
+                ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                : dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+
     /// <summary>Turns the value read by the engine into the column's value type. Fails with a message for a value the type cannot hold.</summary>
     internal static bool TryConvert(Type underlying, SpreadsheetColumnKind kind, object? engine, string cellText, out object? typed, out string? error)
     {

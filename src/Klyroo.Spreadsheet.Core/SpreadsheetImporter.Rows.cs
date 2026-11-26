@@ -552,7 +552,7 @@ public abstract partial class SpreadsheetImporter
     }
 
     // The key of a row as text, the same for the duplicate check, the existing-record check and the lookup: invariant, so a number or a date key does not depend on the culture.
-    private static string KeyText(object? value) => SpreadsheetValueConverter.Format(value);
+    private static string KeyText(object? value) => SpreadsheetValueConverter.KeyText(value);
 
     private bool IsExistingKey(string key)
     {

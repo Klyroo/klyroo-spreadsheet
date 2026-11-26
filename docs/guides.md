@@ -216,7 +216,7 @@ foreach (var row in importer.ImportableTypedRows)
 // B-2 Create 7
 ```
 
-Each importable row carries a `Mode` of `Create` or `Update`, so your `OnSubmit` can branch on it. The two checks compare keys differently: duplicates inside the file ignore case and surrounding spaces, but the lookup in `ExistingRecords` uses the dictionary's own comparer on the exact cell text. Build the dictionary with `StringComparer.OrdinalIgnoreCase` as above if your keys are case-insensitive. The records inside `ExistingRecords` are not read by the importer, only the keys. A key that is not text (an `int` or a date column) is written with the invariant culture, so `42` looks up `"42"`.
+Each importable row carries a `Mode` of `Create` or `Update`, so your `OnSubmit` can branch on it. The two checks compare keys differently: duplicates inside the file ignore case and surrounding spaces, but the lookup in `ExistingRecords` uses the dictionary's own comparer on the exact cell text. Build the dictionary with `StringComparer.OrdinalIgnoreCase` as above if your keys are case-insensitive. The records inside `ExistingRecords` are not read by the importer, only the keys. A key that is not text is written with the invariant culture, so `42` looks up `"42"`, a `decimal` has no trailing zeros (`12.50` looks up `"12.5"`), a `DateOnly` is `yyyy-MM-dd` (`"2026-03-04"`), a `DateTime` is `yyyy-MM-dd` at midnight and otherwise `yyyy-MM-ddTHH:mm` or `yyyy-MM-ddTHH:mm:ss` (`"2026-03-04T10:30"`), and a `DateTimeOffset` is the same text for its UTC instant. `LookupExistingRecordsAsync` receives the same texts.
 
 ## Validate across fields
 

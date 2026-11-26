@@ -134,7 +134,7 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
         LookupExistingRecordsAsync = s.LookupExistingRecordsAsync;
     }
 
-    /// <summary>Records that already exist, keyed by the row key text. A row matches when its key text equals a dictionary key under the dictionary's own comparer, with no trimming or case folding applied to the row, so build the dictionary with <see cref="StringComparer.OrdinalIgnoreCase"/> for case-insensitive keys. Needs a row key.</summary>
+    /// <summary>Records that already exist, keyed by the row key text (invariant: a <see cref="DateOnly"/> is <c>yyyy-MM-dd</c>, a <see cref="DateTime"/> <c>yyyy-MM-ddTHH:mm</c> or with seconds, a <see cref="DateTimeOffset"/> the same for its UTC instant, a <see cref="decimal"/> without trailing zeros). A row matches when its key text equals a dictionary key under the dictionary's own comparer, with no trimming or case folding applied to the row, so build the dictionary with <see cref="StringComparer.OrdinalIgnoreCase"/> for case-insensitive keys. Needs a row key.</summary>
     public IReadOnlyDictionary<string, TRow>? ExistingRecords { get; }
     /// <summary>A cross-field check run on every row after the column rules. It receives the parsed row (a cell that is empty or could not be read leaves its property at the default) and returns extra issues, which are added to the row.</summary>
     public Func<TRow, IReadOnlyList<SpreadsheetRowIssue>>? ValidateRow { get; }
