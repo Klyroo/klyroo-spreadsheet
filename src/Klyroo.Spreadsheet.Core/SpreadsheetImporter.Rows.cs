@@ -304,7 +304,7 @@ public sealed partial class SpreadsheetImporter
                 }
                 else if (col.Required)
                 {
-                    fieldIssue = new SpreadsheetRowIssue(col.Key, "required", SpreadsheetIssueLevel.Error, "Required value is missing");
+                    fieldIssue = new SpreadsheetRowIssue(col.Key, "required", SpreadsheetIssueLevel.Error, "Required value is missing", []);
                     rowIssues.Add(fieldIssue);
                 }
             }
@@ -347,7 +347,7 @@ public sealed partial class SpreadsheetImporter
                                 break;
                             case SpreadsheetValueAnswerAction.SkipRows:
                                 skippedByValue = true;
-                                fieldIssue = new SpreadsheetRowIssue(col.Key, "value.skipped", SpreadsheetIssueLevel.Info, $"Left out: \"{cellText}\" is set to skip its rows");
+                                fieldIssue = new SpreadsheetRowIssue(col.Key, "value.skipped", SpreadsheetIssueLevel.Info, $"Left out: \"{cellText}\" is set to skip its rows", [cellText]);
                                 rowIssues.Add(fieldIssue);
                                 break;
                         }
@@ -358,7 +358,7 @@ public sealed partial class SpreadsheetImporter
                         var msg = col.UnknownPolicy == SpreadsheetUnknownValuePolicy.Error
                             ? $"\"{cellText}\" is not a known value"
                             : $"\"{cellText}\" is not a known value · choose it in Values";
-                        fieldIssue = new SpreadsheetRowIssue(col.Key, code, SpreadsheetIssueLevel.Error, msg);
+                        fieldIssue = new SpreadsheetRowIssue(col.Key, code, SpreadsheetIssueLevel.Error, msg, [cellText]);
                         rowIssues.Add(fieldIssue);
                     }
                 }
@@ -367,7 +367,7 @@ public sealed partial class SpreadsheetImporter
             {
                 if (!TryParseScalar(col, cellText, InvariantNumbers, out parsedVal, out var parseErr))
                 {
-                    fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!);
+                    fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!, col.CustomParse is null ? [cellText] : null);
                     rowIssues.Add(fieldIssue);
                 }
                 else
@@ -385,8 +385,8 @@ public sealed partial class SpreadsheetImporter
                     if (!passed)
                     {
                         var ruleIssue = timedOut
-                            ? new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time")
-                            : new SpreadsheetRowIssue(col.Key, rule.Code, rule.Level, rule.Message);
+                            ? new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time", ["timeout"])
+                            : new SpreadsheetRowIssue(col.Key, rule.Code, rule.Level, rule.Message, rule.MessageArgs);
                         rowIssues.Add(ruleIssue);
                         fieldIssue ??= ruleIssue;
                     }
@@ -447,7 +447,7 @@ public sealed partial class SpreadsheetImporter
             {
                 case SpreadsheetDuplicatesPolicy.Error:
                     var other = _parsed[group[0] != pr.Index ? group[0] : group[1]];
-                    (extra ??= []).Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.duplicate", SpreadsheetIssueLevel.Error, $"Same key as row {other.RowNumber}"));
+                    (extra ??= []).Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.duplicate", SpreadsheetIssueLevel.Error, $"Same key as row {other.RowNumber}", [other.RowNumber.ToString(CultureInfo.InvariantCulture)]));
                     break;
                 case SpreadsheetDuplicatesPolicy.KeepFirst:
                     duplicateDiscard = group[0] != pr.Index;
@@ -477,7 +477,7 @@ public sealed partial class SpreadsheetImporter
             else if (Schema.ExistingAction == SpreadsheetExistingAction.Error)
             {
                 mode = SpreadsheetRowMode.Update;
-                (extra ??= []).Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.exists", SpreadsheetIssueLevel.Error, "Already stored"));
+                (extra ??= []).Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.exists", SpreadsheetIssueLevel.Error, "Already stored", []));
             }
         }
 

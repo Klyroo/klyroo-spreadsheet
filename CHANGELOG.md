@@ -24,9 +24,13 @@ All notable changes to this project are documented in this file. The format foll
 
 - Saved mappings: `SpreadsheetMappingProfile` (normalized header to column key, ignored columns, value answers) with `ToJson`/`FromJson` on a source-generated context (`SpreadsheetMappingProfileJsonContext`, safe for NativeAOT), `SpreadsheetImporter.GetMappingProfile()`, `ApplyMappingProfile()`, `MatchesMappingProfile()` and `SavedMapping`, which is applied automatically whenever a file, sheet or header row is loaded and every header of the profile is present. The profile also guides header row detection. The component says when a saved mapping was applied.
 
+- Localization: the texts of `KlySpreadsheetImport` and the messages of the issues the importer raises follow the Klyroo.UI locale, in the 12 locales of `KlyLocales.All` (English and French reviewed, the others drafts), with the pattern of Klyroo.Display: `SpreadsheetTexts` (a record of strings and functions), `SpreadsheetLocales`, `KlyrooSpreadsheetOptions.Texts(code, change)` and `AddKlyrooSpreadsheet(configure)`. `SpreadsheetRowIssue.Args` and `SpreadsheetRule.MessageArgs` mark the messages the library wrote, so the component shows the message of the locale by issue code (`SpreadsheetTexts.ResolveIssue`) and leaves yours alone. `ExportInvalidRowsCsv` takes the issue text function and the heading of the issues column.
+- A visually hidden polite live region announces the counts of the review and the progress and result of the import. `KlySpreadsheetImport.Title` is now `string?` and defaults to the Import text of the locale.
+
 ### Changed
 
 - `SubmitAsync` no longer starts `ImportedCount` again from zero and resends every importable row: it resumes with the rows that were not accepted (a second call after a complete submit sends nothing; `ResetSubmit()` sends everything again). The rejections of the batches that finished are kept when a later batch throws. The old behavior was the bug: a retry after a failed batch sent the accepted batches again.
+- `SpreadsheetRule.Email` and `Pattern` take a `string? message` (default `null`, which keeps the English default text and lets the component translate it) instead of a default string.
 - `ImportableRows`, `InvalidRows`, `DiscardedRows` and `AllRows` are cached lists (a list you took earlier does not change afterwards). `VisibleReviewRows` is cached too.
 - The select-all checkbox of the review table selects the rows of the current page instead of every visible row.
 - Matching a select cell to its option uses an index built once per column instead of normalizing every option for every cell.

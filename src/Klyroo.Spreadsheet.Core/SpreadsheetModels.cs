@@ -201,36 +201,38 @@ public sealed record SpreadsheetOption(
 /// <param name="Message">The text of the issue shown to the user when the rule fails.</param>
 /// <param name="Validate">Receives the parsed value and returns <see langword="true"/> when it is acceptable.</param>
 /// <param name="Level">The severity of the issue. Only <see cref="SpreadsheetIssueLevel.Error"/> blocks the row.</param>
+/// <param name="MessageArgs">Set by the built-in rules when <paramref name="Message"/> is their default text: the values it contains (the minimum of <see cref="Min"/>, for example). It is copied to <see cref="SpreadsheetRowIssue.Args"/>, which tells the component to show the message of the user's locale instead of the English default. <see langword="null"/> for a rule with your own message, which is shown as it is.</param>
 public sealed record SpreadsheetRule(
     string Code,
     string Message,
     Func<object?, bool> Validate,
-    SpreadsheetIssueLevel Level = SpreadsheetIssueLevel.Error)
+    SpreadsheetIssueLevel Level = SpreadsheetIssueLevel.Error,
+    IReadOnlyList<string>? MessageArgs = null)
 {
     private static readonly Regex EmailRegex = new(@"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$", RegexOptions.Compiled);
 
     /// <summary>Creates a rule that accepts text shaped like an email address (something before and after one <c>@</c>, and a dot followed by at least two characters).</summary>
-    /// <param name="message">The issue text.</param>
+    /// <param name="message">The issue text. When <see langword="null"/>, the component shows the built-in message of the user's locale.</param>
     /// <param name="level">The issue severity.</param>
     /// <returns>A rule with code <c>email</c>. It fails for any value that is not a string.</returns>
-    public static SpreadsheetRule Email(string message = "Not an email address", SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new("email", message, v => v is string s && EmailRegex.IsMatch(s), level);
+    public static SpreadsheetRule Email(string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
+        new("email", message ?? "Not an email address", v => v is string s && EmailRegex.IsMatch(s), level, message is null ? [] : null);
 
     /// <summary>The match timeout <see cref="Pattern"/> uses when you pass none: 100 milliseconds per cell.</summary>
     public static readonly TimeSpan DefaultPatternTimeout = TimeSpan.FromMilliseconds(100);
 
     /// <summary>Creates a rule that accepts text matching a regular expression. A cell that makes the match run past the timeout (catastrophic backtracking on a hostile value) does not hang the import: it gets a <c>pattern</c> issue saying the format could not be checked in time.</summary>
     /// <param name="pattern">The regular expression. It is not anchored unless you add <c>^</c> and <c>$</c>.</param>
-    /// <param name="message">The issue text.</param>
+    /// <param name="message">The issue text. When <see langword="null"/>, the component shows the built-in message of the user's locale.</param>
     /// <param name="level">The issue severity. A timed-out check gets the same severity.</param>
     /// <param name="matchTimeout">The longest one match may take. Defaults to <see cref="DefaultPatternTimeout"/>. Use <see cref="Regex.InfiniteMatchTimeout"/> to remove the limit.</param>
     /// <returns>A rule with code <c>pattern</c>. It fails for any value that is not a string.</returns>
     /// <exception cref="ArgumentException"><paramref name="pattern"/> is not a valid regular expression.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="matchTimeout"/> is zero, negative or too large for <see cref="Regex"/>.</exception>
-    public static SpreadsheetRule Pattern(string pattern, string message = "Unexpected format", SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error, TimeSpan? matchTimeout = null)
+    public static SpreadsheetRule Pattern(string pattern, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error, TimeSpan? matchTimeout = null)
     {
         var rx = new Regex(pattern, RegexOptions.Compiled, matchTimeout ?? DefaultPatternTimeout);
-        return new("pattern", message, v => v is string s && rx.IsMatch(s), level);
+        return new("pattern", message ?? "Unexpected format", v => v is string s && rx.IsMatch(s), level, message is null ? [] : null);
     }
 
     /// <summary>Creates a rule that accepts numbers greater than or equal to a minimum.</summary>
@@ -240,7 +242,7 @@ public sealed record SpreadsheetRule(
     /// <returns>A rule with code <c>min</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
     public static SpreadsheetRule Min(double min, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
         new("min", message ?? $"Value is below {min.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d >= min, level);
+            v => v is double d && d >= min, level, message is null ? [min.ToString(CultureInfo.InvariantCulture)] : null);
 
     /// <summary>Creates a rule that accepts numbers less than or equal to a maximum.</summary>
     /// <param name="max">The largest accepted value.</param>
@@ -249,7 +251,7 @@ public sealed record SpreadsheetRule(
     /// <returns>A rule with code <c>max</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
     public static SpreadsheetRule Max(double max, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
         new("max", message ?? $"Value is above {max.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d <= max, level);
+            v => v is double d && d <= max, level, message is null ? [max.ToString(CultureInfo.InvariantCulture)] : null);
 
     /// <summary>Creates a rule that accepts numbers inside an inclusive range.</summary>
     /// <param name="min">The smallest accepted value.</param>
@@ -259,7 +261,8 @@ public sealed record SpreadsheetRule(
     /// <returns>A rule with code <c>between</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
     public static SpreadsheetRule Between(double min, double max, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
         new("between", message ?? $"Value is not between {min.ToString(CultureInfo.InvariantCulture)} and {max.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d >= min && d <= max, level);
+            v => v is double d && d >= min && d <= max, level,
+            message is null ? [min.ToString(CultureInfo.InvariantCulture), max.ToString(CultureInfo.InvariantCulture)] : null);
 }
 
 /// <summary>Declares one field of the imported data: how to find it in the file, how to parse it and how to validate it.</summary>
@@ -462,12 +465,14 @@ public sealed record SpreadsheetValueQuestion(
 /// <param name="Field">The column key the issue relates to, or <see langword="null"/> for the whole row.</param>
 /// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c> and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
 /// <param name="Level">The severity.</param>
-/// <param name="Message">The text shown to the user.</param>
+/// <param name="Message">The text of the issue in English. <c>KlySpreadsheetImport</c> shows it as it is when <paramref name="Args"/> is <see langword="null"/>.</param>
+/// <param name="Args">Set for the messages the library writes itself: the values the message contains (the cell text of a <c>number</c> issue, the row number of a <c>row.duplicate</c> issue), possibly none. With it, the component shows the message of the user's locale for the <paramref name="Code"/>, see <c>SpreadsheetTexts</c>. <see langword="null"/> for a message you wrote (a rule with your own text, <see cref="SpreadsheetSchema.ValidateRow"/>, a server rejection), which is never replaced.</param>
 public sealed record SpreadsheetRowIssue(
     string? Field,
     string Code,
     SpreadsheetIssueLevel Level,
-    string Message);
+    string Message,
+    IReadOnlyList<string>? Args = null);
 
 /// <summary>How one cell of a row is read and displayed.</summary>
 /// <param name="Text">The text being parsed: the user's edit when there is one, otherwise the file text.</param>
@@ -1272,9 +1277,12 @@ public sealed partial class SpreadsheetImporter
     }
 
     /// <summary>Builds a CSV of the rows with errors so users can fix them in their own tool and import the file again.</summary>
+    /// <param name="issueText">Turns an issue into the text of the <c>Issues</c> column. Defaults to <see cref="SpreadsheetRowIssue.Message"/>. <c>KlySpreadsheetImport</c> passes the message of the user's locale.</param>
+    /// <param name="issuesHeader">The heading of the last column. Defaults to <c>Issues</c>.</param>
     /// <returns>Comma-separated text starting with a byte order mark. There is one column per schema column that is not computed with <see cref="SpreadsheetColumnSchema.From"/>, in schema order, headed by the file header it was read from (or the first of <see cref="SpreadsheetColumnSchema.Headers"/>, or the label, when it was not mapped), then an <c>Issues</c> column. Cells hold the text being parsed, user edits included.</returns>
-    public string ExportInvalidRowsCsv()
+    public string ExportInvalidRowsCsv(Func<SpreadsheetRowIssue, string>? issueText = null, string issuesHeader = "Issues")
     {
+        issueText ??= i => i.Message;
         static string Quote(string value) => $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 
         var fields = _fields.Where(f => string.IsNullOrEmpty(f.Column.From)).ToList();
@@ -1282,12 +1290,12 @@ public sealed partial class SpreadsheetImporter
         sb.Append('\uFEFF');
         var headers = fields
             .Select(f => f.HeaderText ?? f.Column.Headers?.FirstOrDefault() ?? f.Column.EffectiveLabel)
-            .Append("Issues");
+            .Append(issuesHeader);
         sb.AppendLine(string.Join(',', headers.Select(Quote)));
         foreach (var row in InvalidRows)
         {
             var cells = fields.Select(f => row.Cells.TryGetValue(f.Column.Key, out var cv) ? cv.Text : "");
-            var issuesText = string.Join("; ", row.Issues.Select(i => i.Field is not null ? $"{i.Field}: {i.Message}" : i.Message));
+            var issuesText = string.Join("; ", row.Issues.Select(i => i.Field is not null ? $"{i.Field}: {issueText(i)}" : issueText(i)));
             sb.AppendLine(string.Join(',', cells.Append(issuesText).Select(Quote)));
         }
         return sb.ToString();

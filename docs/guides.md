@@ -10,6 +10,7 @@ Each guide solves one task and assumes you read [Getting started](getting-starte
 - [Submit in batches and retry rejected rows](#submit-in-batches-and-retry-rejected-rows)
 - [Check rows and records against your server](#check-rows-and-records-against-your-server)
 - [Remember a column mapping](#remember-a-column-mapping)
+- [Translate the wizard and its messages](#translate-the-wizard-and-its-messages)
 - [Read an Excel file](#read-an-excel-file)
 - [Let users paste rows in Blazor](#let-users-paste-rows-in-blazor)
 - [Import large files](#import-large-files)
@@ -407,6 +408,40 @@ Console.WriteLine(next.SavedMappingApplied);            // true: the columns are
 The profile is applied whenever a file is loaded, or the user picks another sheet or header row, and every header it maps is present in the file (compared like column matching: case, accents and a trailing `*` ignored, any order, extra file columns allowed). It also helps to find the header row: a row whose headers the profile maps counts as a header row, so a renamed header under a banner is found. A file that does not match is read as usual, and the user can still change any choice, which wins over the profile. A profile made for another `SpreadsheetSchema.Key`, or of another `Version`, is never applied. `KlySpreadsheetImport` says "Your saved column mapping was applied" when it was. Use `ApplyMappingProfile(profile)` to apply one yourself and read what it did, and `MatchesMappingProfile(profile)` to test a file without applying anything.
 
 **Storing it.** `ToJson` and `FromJson` use `SpreadsheetMappingProfileJsonContext`, a source-generated `System.Text.Json` context, so they work under trimming and NativeAOT with no reflection. To store a profile inside your own JSON document, add `[JsonSerializable(typeof(SpreadsheetMappingProfile))]` to your own context. Save it after the import succeeds (`SubmitStatus` is `Done`) or when the user leaves the columns step: the importer raises `Changed` after each of these, so subscribe to it, or call `GetMappingProfile()` where your `OnSubmit` finishes. Do not store it in the browser for data that should follow the user across devices; a profile is small, so a row per user and schema is enough.
+
+## Translate the wizard and its messages
+
+Goal: show the wizard and the validation messages in the language of the user.
+
+`KlySpreadsheetImport` takes the locale of Klyroo.UI (the cascading `KlyLocale`, then the locale of `AddKlyrooUi`, then the current UI culture) and shows the texts of that locale. There is one set per locale of `KlyLocales.All` (English, French, German, Spanish, Italian, Portuguese, Brazilian Portuguese, Dutch, Japanese, Simplified Chinese, Arabic and Russian), found by the code of the locale: `pt-PT` gets `pt`, an unknown language gets English. English and French are reviewed; the other sets are drafts waiting for a native speaker (`SpreadsheetLocales.ReviewedCodes` lists the reviewed ones). A text that holds a number or a name is a function, so each language chooses its plural forms and word order.
+
+Change a set in `AddKlyrooSpreadsheet`, in code shared by the server and the WebAssembly client:
+
+```csharp
+builder.Services.AddKlyrooSpreadsheet(s => s
+    .Texts("fr", t => t with
+    {
+        ImportRows = n => n <= 1 ? $"Lancer l’import de {n} ligne" : $"Lancer l’import de {n} lignes",
+        IssueRowExists = "Cette référence existe déjà",
+    })
+    .Texts("en", t => t with { StepReview = "Check" }));
+```
+
+A change to `"fr"` also applies to `fr-CA` and the other locales that resolve to it, and a locale you add (`KlyLocales.Extend(KlyLocales.En, code: "en-AU", ...)`) starts from the set its code resolves to. The texts become read-only once a component has resolved one, so change them before the app renders. `SpreadsheetTexts` documents every text; build a variant with a `with` expression.
+
+**Issue messages are resolved by code.** The importer raises issues with an English `Message` and, for the messages the library writes, the values in `Args`. The component shows `texts.ResolveIssue(issue)`: the message of the locale for codes such as `required`, `number`, `boolean`, `date`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `pattern`, and for the default messages of `SpreadsheetRule.Email`, `Pattern`, `Min`, `Max` and `Between`. A message you wrote is never replaced: a rule built with your own `message`, the issues of `ValidateRow` and `ValidateRowsAsync`, a `CustomParse` exception and a server rejection have no `Args` and show as they are. In your own UI, call the same method:
+
+```csharp
+var texts = SpreadsheetLocales.Tables["fr"];
+foreach (var issue in importer.InvalidRows.SelectMany(r => r.Issues))
+{
+    Console.WriteLine(texts.ResolveIssue(issue));   // « x » n’est pas un nombre
+}
+```
+
+The invalid rows download is written in the locale too (`ExportInvalidRowsCsv` takes the function that turns an issue into text and the heading of the last column). The text you give to the component is never translated: `Title` (the heading defaults to the word Import of the locale), column labels and descriptions, and your own rule messages. The `InvalidDataException` messages of the file readers are English.
+
+**Announcements.** The component has a visually hidden live region (`aria-live="polite"`) that says the counts of the review as they change ("To import: 118. With errors: 2. Left out: 0.") and the progress and the end of the import ("Importing: 40 of 120 rows", "120 rows imported"), in the locale of the user. The notices that appear on their own (saved mapping applied, row limit, state of the checks) are `role="status"` regions too.
 
 ## Read an Excel file
 

@@ -48,4 +48,4 @@ If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreads
 ## Not supported
 
 - Reading password-protected workbooks, and `.xls` files in the Excel 5.0/95 format (BIFF5). `.xlsx` and `.xls` from Excel 97 to 2003 are supported, see [Read an Excel file](guides.md#read-an-excel-file).
-- Translated text. The component's labels and messages are English strings in the component, and the issue messages created by the importer are English too. You can supply your own text for rule messages (`SpreadsheetRule` takes a `Message`) and for `Label`.
+- Translated text from the headless engine. The component shows its texts and the library's issue messages in the locale of Klyroo.UI, but `SpreadsheetImporter` itself writes English messages (`SpreadsheetRowIssue.Message`), and so do the `InvalidDataException`s of the file readers. Resolve a message in your own language with `SpreadsheetTexts.ResolveIssue`, see [Translate the wizard](guides.md#translate-the-wizard-and-its-messages).

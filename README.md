@@ -17,6 +17,7 @@ User files rarely match your model: the header is on row 3, a column is named di
 - **Unknown value questions**: turns select cells that match no option into questions you answer by mapping, leaving empty, skipping the rows or creating the value, or resolves them automatically with a per-column policy.
 - **Duplicates and existing records**: detects repeated keys inside the file, keeps the first or last, and marks rows whose key already exists as updates, skips or errors.
 - **Inline correction**: edits cells, discards and restores rows, filters the review by tab, severity, issue and text, all without touching the source file.
+- **12 languages**: the wizard, its validation messages and its screen reader announcements follow the Klyroo.UI locale (English and French reviewed, ten drafts), and any text can be changed per locale.
 - **Large files**: parses a file once and then updates only the rows a change concerns, so editing a cell of a 50,000-row file takes milliseconds, and the wizard pages its review table and caps an import at 10,000 rows by default.
 - **Saved mappings**: stores the column mapping and value answers of an import as JSON (source-generated, AOT-safe) and applies them automatically to the next file with the same headers.
 - **Batched submit with retry**: sends importable rows to your callback in batches, shows the rows the server refused as errors on those rows, and sends only them again.

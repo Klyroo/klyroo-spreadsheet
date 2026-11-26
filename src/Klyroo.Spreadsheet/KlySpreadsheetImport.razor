@@ -14,7 +14,7 @@
         @* Wizard Header *@
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-(--klyroo-border) pb-3" data-slot="spreadsheet-header">
             <div class="flex items-center gap-2.5">
-                <h2 class="m-0 text-base font-bold text-(--klyroo-text-highlighted)" data-slot="spreadsheet-title">@Title</h2>
+                <h2 class="m-0 text-base font-bold text-(--klyroo-text-highlighted)" data-slot="spreadsheet-title">@(Title ?? T.Import)</h2>
                 @if (Importer.FileLoaded && !string.IsNullOrEmpty(Importer.FileName))
                 {
                     <span class="rounded-full bg-(--klyroo-bg-muted) px-2.5 py-0.5 text-xs font-medium text-(--klyroo-text-muted)"
@@ -41,10 +41,10 @@
                                     data-state="@step.State"
                                     @onclick="@(() => Importer.GoToStep(step.Key))">
                                 <span class="tabular-nums">@(isDone || isSkipped ? "✓" : $"{step.Position}.")</span>
-                                <span>@step.Label</span>
+                                <span>@T.StepTitle(step.Key, step.Label)</span>
                                 @if (isSkipped)
                                 {
-                                    <span class="text-[10px] opacity-75">(nothing to do)</span>
+                                    <span class="text-[10px] opacity-75">@T.NothingToDo</span>
                                 }
                             </button>
                         </li>
@@ -86,7 +86,7 @@
                                 class="inline-flex h-9 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3.5 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
                                 data-slot="spreadsheet-nav-back"
                                 @onclick="@(() => Importer.PreviousStep())">
-                            Back
+                            @T.Back
                         </button>
                     }
                 </div>
@@ -94,24 +94,24 @@
                 <div class="flex items-center gap-3">
                     @if (currentStep.Key == "file" && !Importer.FileLoaded)
                     {
-                        <span class="text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-nav-hint">Choose a file to continue</span>
+                        <span class="text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-nav-hint">@T.ChooseFileToContinue</span>
                     }
                     else if (currentStep.Key == "columns" && Importer.MissingFields.Count > 0)
                     {
                         <span class="text-xs font-medium text-(--klyroo-error-text)" data-slot="spreadsheet-nav-hint">
-                            Required columns missing: @Importer.MissingFields.Count
+                            @T.RequiredColumnsMissing(Importer.MissingFields.Count)
                         </span>
                     }
                     else if (currentStep.Key == "values" && Importer.OpenQuestions.Count > 0)
                     {
                         <span class="text-xs font-medium text-(--klyroo-error-text)" data-slot="spreadsheet-nav-hint">
-                            Values to choose: @Importer.OpenQuestions.Count
+                            @T.ValuesToChoose(Importer.OpenQuestions.Count)
                         </span>
                     }
                     else if (currentStep.Key == "review" && Importer.InvalidRows.Count > 0)
                     {
                         <span class="text-xs text-(--klyroo-warning-text)" data-slot="spreadsheet-nav-hint">
-                            Rows with errors are left out: @Importer.InvalidRows.Count
+                            @T.RowsWithErrorsLeftOut(Importer.InvalidRows.Count)
                         </span>
                     }
 
@@ -122,7 +122,7 @@
                                 class="inline-flex h-9 items-center rounded-(--klyroo-radius) bg-(--klyroo-primary) px-4 text-xs font-semibold text-(--klyroo-primary-contrast) hover:opacity-90 disabled:opacity-40"
                                 data-slot="spreadsheet-nav-continue"
                                 @onclick="@(() => Importer.NextStep())">
-                            Continue
+                            @T.Continue
                         </button>
                     }
                     else if (Importer.SubmitStatus == SpreadsheetSubmitStatus.Running)
@@ -131,7 +131,7 @@
                                 class="inline-flex h-9 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3.5 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
                                 data-slot="spreadsheet-cancel-button"
                                 @onclick="Importer.CancelSubmit">
-                            Cancel
+                            @T.Cancel
                         </button>
                     }
                     else if (Importer.SubmitStatus != SpreadsheetSubmitStatus.Done)
@@ -143,9 +143,9 @@
                                 @onclick="@(() => Importer.SubmitAsync())">
                             @(Importer.SubmitStatus switch
                             {
-                                SpreadsheetSubmitStatus.Error => "Try again",
-                                SpreadsheetSubmitStatus.Cancelled => "Resume the import",
-                                _ => $"Import {Importer.PendingRows.Count} rows",
+                                SpreadsheetSubmitStatus.Error => T.TryAgain,
+                                SpreadsheetSubmitStatus.Cancelled => T.ResumeImport,
+                                _ => T.ImportRows(Importer.PendingRows.Count),
                             })
                         </button>
                     }
@@ -155,12 +155,15 @@
                                 class="inline-flex h-9 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3.5 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
                                 data-slot="spreadsheet-import-another"
                                 @onclick="Importer.ClearFile">
-                            Import another file
+                            @T.ImportAnotherFile
                         </button>
                     }
                 </div>
             </footer>
         }
+
+        @* A polite live region: the counts of the review and the progress of the import are announced as they change. *@
+        <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-slot="spreadsheet-live">@LiveMessage</div>
     </div>
 }
 
@@ -175,8 +178,8 @@
 
     /// <summary>The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text, <c>.xlsx</c> or <c>.xls</c>, through <see cref="SpreadsheetImporter.LoadFileAsync"/>) or by pasting rows; your code can also call <see cref="SpreadsheetImporter.LoadText"/> or <see cref="SpreadsheetImporter.LoadWorkbook"/>.</summary>
     [Parameter] public required SpreadsheetImporter Importer { get; set; }
-    /// <summary>The heading shown above the wizard. Defaults to <c>Import</c>.</summary>
-    [Parameter] public string Title { get; set; } = "Import";
+    /// <summary>The heading shown above the wizard. Defaults to the word Import in the language of the locale (<see cref="SpreadsheetTexts.Import"/>). Your text is shown as it is.</summary>
+    [Parameter] public string? Title { get; set; }
     /// <summary>The largest file users can choose, in bytes. Defaults to 10 MB.</summary>
     [Parameter] public long MaxFileSize { get; set; } = 10 * 1024 * 1024;
     /// <summary>The number of rows the review table shows per page, 50 by default. Users can change it with the page size list of the pager.</summary>
@@ -189,6 +192,34 @@
     [Parameter] public EventCallback<SpreadsheetDownload> OnDownload { get; set; }
     /// <summary>Shows the step bar and the Back, Continue and Import buttons. When <see langword="false"/> only the current step is rendered and your code moves between steps with the importer's step methods.</summary>
     [Parameter] public bool Wizard { get; set; } = true;
+
+    // The texts of the current locale, with the changes made in AddKlyrooSpreadsheet.
+    private SpreadsheetTexts T => Options.Extension<KlyrooSpreadsheetOptions>().ResolveTexts(CurrentLocale.Code);
+
+    // What the live region says: the counts of the review (they change after each edit), then the progress and the result of the import.
+    private string LiveMessage
+    {
+        get
+        {
+            var importer = Importer;
+            switch (importer.SubmitStatus)
+            {
+                case SpreadsheetSubmitStatus.Running:
+                    return T.LiveImporting(importer.SubmitDone, importer.SubmitTotal);
+                case SpreadsheetSubmitStatus.Done:
+                    return importer.RejectedCount > 0
+                        ? $"{T.RowsImported(importer.ImportedCount)}. {T.RowsRefused(importer.RejectedCount)}."
+                        : T.RowsImported(importer.ImportedCount);
+                case SpreadsheetSubmitStatus.Cancelled:
+                    return T.ImportCancelled;
+                case SpreadsheetSubmitStatus.Error:
+                    return importer.SubmitError is { Length: > 0 } error ? $"{T.ImportFailed}. {error}" : T.ImportFailed;
+            }
+            if (importer.CurrentStepKey != "review") return "";
+            var counts = T.LiveReview(importer.ImportableRows.Count, importer.InvalidRows.Count, importer.DiscardedRows.Count);
+            return importer.HasAsyncChecks && importer.ValidationStatus == SpreadsheetValidationStatus.Running ? $"{T.CheckingRows} {counts}" : counts;
+        }
+    }
 
     private string RootClass =>
         $"flex w-full flex-col gap-4 rounded-(--klyroo-radius-md) border border-(--klyroo-border) bg-(--klyroo-bg) p-4 text-sm text-(--klyroo-text) {Class}".Trim();
@@ -235,13 +266,13 @@
                     @* The file input covers the zone, so a file dropped anywhere on it is received by the input. *@
                     <InputFile class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                accept="@string.Join(",", Importer.Schema.Accept)"
-                               aria-label="Choose a file to import"
+                               aria-label="@T.ChooseFileLabel"
                                data-slot="spreadsheet-file-input"
                                OnChange="OnFileSelectedAsync" />
-                    <span class="m-0 font-semibold text-(--klyroo-text-highlighted)">@(_loadingFile ? "Reading the file…" : "Drop your file here or click to choose one")</span>
+                    <span class="m-0 font-semibold text-(--klyroo-text-highlighted)">@(_loadingFile ? T.ReadingFile : T.DropFileHere)</span>
                     <span class="m-0 text-xs text-(--klyroo-text-muted)">
                         @string.Join(", ", Importer.Schema.Accept)
-                        @(Importer.EffectiveMaxRows is { } mr ? $" · up to {mr:N0} rows" : "")
+                        @(Importer.EffectiveMaxRows is { } mr ? $" · {T.UpToRows(mr)}" : "")
                     </span>
                 </label>
 
@@ -251,11 +282,11 @@
                 }
 
                 <details class="rounded-(--klyroo-radius) border border-(--klyroo-border) p-3" data-slot="spreadsheet-paste">
-                    <summary class="cursor-pointer text-xs font-semibold text-(--klyroo-text-highlighted)">Or paste rows copied from a spreadsheet</summary>
+                    <summary class="cursor-pointer text-xs font-semibold text-(--klyroo-text-highlighted)">@T.PasteSummary</summary>
                     <div class="mt-2 flex flex-col gap-2">
                         <textarea rows="5"
-                                  aria-label="Rows to import"
-                                  placeholder="Paste the rows here, header row first"
+                                  aria-label="@T.PasteLabel"
+                                  placeholder="@T.PastePlaceholder"
                                   class="w-full rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) p-2 font-mono text-xs"
                                   data-slot="spreadsheet-paste-input"
                                   @bind="_pastedText" @bind:event="oninput"></textarea>
@@ -265,7 +296,7 @@
                                     class="inline-flex h-8 items-center rounded-(--klyroo-radius) bg-(--klyroo-primary) px-3 text-xs font-semibold text-(--klyroo-primary-contrast) hover:opacity-90 disabled:opacity-40"
                                     data-slot="spreadsheet-paste-load"
                                     @onclick="LoadPastedRows">
-                                Use these rows
+                                @T.UseTheseRows
                             </button>
                         </div>
                     </div>
@@ -276,13 +307,13 @@
                             class="inline-flex h-8 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
                             data-slot="spreadsheet-download-template"
                             @onclick="DownloadTemplateAsync">
-                        Download a template
+                        @T.DownloadTemplate
                     </button>
                 </div>
                 @RenderDownloadError()
 
                 <div class="flex flex-col gap-1.5" data-slot="spreadsheet-expected-columns">
-                    <span class="text-xs font-semibold text-(--klyroo-text-muted)">Expected columns:</span>
+                    <span class="text-xs font-semibold text-(--klyroo-text-muted)">@T.ExpectedColumns</span>
                     @foreach (var group in Importer.Schema.Columns.Where(c => string.IsNullOrEmpty(c.From)).GroupBy(c => c.Group ?? ""))
                     {
                         <div class="flex flex-wrap items-center gap-1.5" data-slot="spreadsheet-expected-group" data-group="@(group.Key.Length > 0 ? group.Key : null)">
@@ -302,7 +333,7 @@
                                     }
                                     else
                                     {
-                                        <span class="text-[10px] text-(--klyroo-text-muted)">optional</span>
+                                        <span class="text-[10px] text-(--klyroo-text-muted)">@T.Optional</span>
                                     }
                                 </span>
                             }
@@ -321,7 +352,7 @@
                         <div class="flex flex-col">
                             <span class="font-semibold text-(--klyroo-text-highlighted)" data-slot="spreadsheet-file-name">@Importer.FileName</span>
                             <span class="text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-file-summary">
-                                @($"{Importer.AllRows.Count} rows · {Importer.Sheets.Count} sheets · Column names on row {Importer.HeaderRowNumber}")
+                                @T.FileSummary(Importer.AllRows.Count, Importer.Sheets.Count, Importer.HeaderRowNumber)
                             </span>
                         </div>
                     </div>
@@ -329,7 +360,7 @@
                             class="rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3 py-1 text-xs font-medium text-(--klyroo-text) hover:bg-(--klyroo-bg-elevated)"
                             data-slot="spreadsheet-file-replace"
                             @onclick="ReplaceFile">
-                        Replace
+                        @T.Replace
                     </button>
                 </div>
 
@@ -340,7 +371,7 @@
                     @if (Importer.Sheets.Count > 1)
                     {
                         <label class="flex items-center gap-2">
-                            <span class="font-semibold text-(--klyroo-text-muted)">Sheet</span>
+                            <span class="font-semibold text-(--klyroo-text-muted)">@T.Sheet</span>
                             <select class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                     data-slot="spreadsheet-sheet-select"
                                     @onchange="@(e => Importer.SetSheet(e.Value?.ToString() ?? ""))">
@@ -354,7 +385,7 @@
                     @if (Importer.CurrentSheet is { Rows.Count: > 1 } current)
                     {
                         <label class="flex items-center gap-2">
-                            <span class="font-semibold text-(--klyroo-text-muted)">Column names on row</span>
+                            <span class="font-semibold text-(--klyroo-text-muted)">@T.ColumnNamesOnRow</span>
                             <select class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                     data-slot="spreadsheet-header-row-select"
                                     @onchange="OnHeaderRowChange">
@@ -382,7 +413,7 @@
             @if (Importer.SavedMappingApplied)
             {
                 <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-success)/15 px-3 py-2 text-xs text-(--klyroo-success-text)" role="status" data-slot="spreadsheet-saved-mapping">
-                    Your saved column mapping was applied.
+                    @T.SavedMappingApplied
                 </p>
             }
         </text>;
@@ -392,7 +423,7 @@
             @if (Importer.LimitedRowCount > 0 && Importer.EffectiveMaxRows is { } limit)
             {
                 <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-warning)/15 px-3 py-2 text-xs text-(--klyroo-warning-text)" role="status" data-slot="spreadsheet-row-limit">
-                    @($"Only the first {limit:N0} rows are imported. Rows left out because of the limit: {Importer.LimitedRowCount:N0}.")
+                    @T.RowLimitNotice(limit, Importer.LimitedRowCount)
                 </p>
             }
         </text>;
@@ -405,21 +436,21 @@
                     <span>
                         @(Importer.ValidationStatus switch
                         {
-                            SpreadsheetValidationStatus.Running => "Checking the rows…",
-                            SpreadsheetValidationStatus.Done => "The rows were checked",
-                            SpreadsheetValidationStatus.Cancelled => "The check was cancelled",
-                            _ => $"The check failed: {Importer.ValidationError}",
+                            SpreadsheetValidationStatus.Running => T.CheckingRows,
+                            SpreadsheetValidationStatus.Done => T.RowsChecked,
+                            SpreadsheetValidationStatus.Cancelled => T.CheckCancelled,
+                            _ => T.CheckFailed(Importer.ValidationError ?? ""),
                         })
                     </span>
                     @if (Importer.ValidationStatus == SpreadsheetValidationStatus.Running)
                     {
                         <button type="button" class="font-semibold text-(--klyroo-primary-text) hover:underline" data-slot="spreadsheet-validation-cancel"
-                                @onclick="Importer.CancelValidation">Cancel</button>
+                                @onclick="Importer.CancelValidation">@T.Cancel</button>
                     }
                     else if (Importer.ValidationStatus is SpreadsheetValidationStatus.Error or SpreadsheetValidationStatus.Cancelled)
                     {
                         <button type="button" class="font-semibold text-(--klyroo-primary-text) hover:underline" data-slot="spreadsheet-validation-retry"
-                                @onclick="@(() => Importer.ValidateAsync())">Check again</button>
+                                @onclick="@(() => Importer.ValidateAsync())">@T.CheckAgain</button>
                     }
                 </div>
             }
@@ -447,28 +478,28 @@
                         @if (f.Suggestion is { } sug)
                         {
                             <div class="flex items-center gap-1.5 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-column-suggestion">
-                                <span>"@sug.HeaderText" has values like @string.Join(", ", sug.Samples)</span>
+                                <span>@T.SuggestionText(sug.HeaderText, string.Join(", ", sug.Samples))</span>
                                 <button type="button"
                                         class="font-semibold text-(--klyroo-primary-text) hover:underline"
                                         data-slot="spreadsheet-use-suggestion"
                                         @onclick="@(() => Importer.AssignColumn(f.Column.Key, sug.HeaderIndex))">
-                                    Use it
+                                    @T.UseSuggestion
                                 </button>
                             </div>
                         }
                         else if (f.Samples.Count > 0)
                         {
-                            <span class="text-xs text-(--klyroo-text-muted)">Samples: @string.Join(", ", f.Samples)</span>
+                            <span class="text-xs text-(--klyroo-text-muted)">@T.SamplesText(string.Join(", ", f.Samples))</span>
                         }
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <select aria-label="@($"Column for {f.Column.EffectiveLabel}")"
+                        <select aria-label="@T.ColumnFor(f.Column.EffectiveLabel)"
                                 class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                 value="@(f.HeaderIndex?.ToString() ?? "")"
                                 data-slot="spreadsheet-column-select"
                                 @onchange="@(e => OnColumnSelectChange(f.Column.Key, e.Value?.ToString()))">
-                            <option value="">Not in the file</option>
+                            <option value="">@T.NotInFile</option>
                             @for (var h = 0; h < Importer.Headers.Count; h++)
                             {
                                 if (string.IsNullOrWhiteSpace(Importer.Headers[h])) continue;
@@ -481,7 +512,7 @@
                                     class="text-xs font-medium text-(--klyroo-primary-text) hover:underline"
                                     data-slot="spreadsheet-column-undo"
                                     @onclick="@(() => Importer.ResetColumn(f.Column.Key))">
-                                Undo
+                                @T.Undo
                             </button>
                         }
                     </div>
@@ -491,7 +522,7 @@
             @if (Importer.UnusedHeaders.Count > 0)
             {
                 <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-unused-headers">
-                    Not imported: @string.Join(", ", Importer.UnusedHeaders)
+                    @T.NotImported(string.Join(", ", Importer.UnusedHeaders))
                 </p>
             }
         </div>;
@@ -500,7 +531,7 @@
         @<div class="flex flex-col gap-3" data-slot="spreadsheet-value-mapping">
             @if (Importer.Questions.Count == 0)
             {
-                <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-values-empty">Every value was found in the list</p>
+                <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-values-empty">@T.AllValuesFound</p>
             }
             else
             {
@@ -510,15 +541,15 @@
                          data-slot="spreadsheet-value-row" data-field="@q.FieldKey" data-value="@q.RawValue" data-state="@(q.IsOpen ? "open" : "answered")">
                         <div class="flex flex-col gap-0.5">
                             <span class="text-xs font-semibold text-(--klyroo-text-highlighted)">@q.FieldLabel: "@q.RawValue"</span>
-                            <span class="text-[11px] text-(--klyroo-text-muted)">@($"{q.RowIndexes.Count} rows")</span>
+                            <span class="text-[11px] text-(--klyroo-text-muted)">@T.RowCount(q.RowIndexes.Count)</span>
                         </div>
 
                         <div class="flex items-center gap-2">
-                            <select aria-label="@($"Answer for {q.RawValue}")"
+                            <select aria-label="@T.AnswerFor(q.RawValue)"
                                     class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                     data-slot="spreadsheet-value-select"
                                     @onchange="@(e => OnValueAnswerChange(q, e.Value?.ToString()))">
-                                <option value="">Choose…</option>
+                                <option value="">@T.Choose</option>
                                 @foreach (var opt in q.Choices)
                                 {
                                     var isSelected = q.Answer?.Action == SpreadsheetValueAnswerAction.Map && q.Answer.MappedValue == opt.Value;
@@ -526,10 +557,10 @@
                                 }
                                 @if (q.CanCreate)
                                 {
-                                    <option value="action:create" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.Create)">Create "@q.RawValue"</option>
+                                    <option value="action:create" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.Create)">@T.CreateValue(q.RawValue)</option>
                                 }
-                                <option value="action:leave-empty" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.LeaveEmpty)">Leave empty</option>
-                                <option value="action:skip-rows" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.SkipRows)">Don't import these rows</option>
+                                <option value="action:leave-empty" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.LeaveEmpty)">@T.LeaveEmpty</option>
+                                <option value="action:skip-rows" selected="@(q.Answer?.Action == SpreadsheetValueAnswerAction.SkipRows)">@T.SkipRows</option>
                             </select>
                         </div>
                     </div>
@@ -546,15 +577,15 @@
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3" data-slot="spreadsheet-stats">
                 <div class="rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg-muted) p-3" data-slot="spreadsheet-stat-importable">
                     <span class="text-lg font-bold tabular-nums text-(--klyroo-success-text)">@Importer.ImportableRows.Count</span>
-                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">rows to import</span>
+                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">@T.RowsToImport</span>
                 </div>
                 <div class="rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg-muted) p-3" data-slot="spreadsheet-stat-invalid">
                     <span class="text-lg font-bold tabular-nums @(Importer.InvalidRows.Count > 0 ? "text-(--klyroo-error-text)" : "text-(--klyroo-text-highlighted)")">@Importer.InvalidRows.Count</span>
-                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">rows with errors</span>
+                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">@T.RowsWithErrors</span>
                 </div>
                 <div class="rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg-muted) p-3" data-slot="spreadsheet-stat-discarded">
                     <span class="text-lg font-bold tabular-nums text-(--klyroo-text-highlighted)">@Importer.DiscardedRows.Count</span>
-                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">rows left out</span>
+                    <span class="ms-1.5 text-xs text-(--klyroo-text-muted)">@T.RowsLeftOut</span>
                 </div>
             </div>
 
@@ -566,10 +597,10 @@
                         var active = Importer.ReviewTab == tab;
                         var label = tab switch
                         {
-                            SpreadsheetReviewTab.Importable => $"To import ({Importer.ImportableRows.Count})",
-                            SpreadsheetReviewTab.Invalid => $"Invalid ({Importer.InvalidRows.Count})",
-                            SpreadsheetReviewTab.Discarded => $"Left out ({Importer.DiscardedRows.Count})",
-                            _ => $"All ({Importer.AllRows.Count})",
+                            SpreadsheetReviewTab.Importable => T.TabImportable(Importer.ImportableRows.Count),
+                            SpreadsheetReviewTab.Invalid => T.TabInvalid(Importer.InvalidRows.Count),
+                            SpreadsheetReviewTab.Discarded => T.TabDiscarded(Importer.DiscardedRows.Count),
+                            _ => T.TabAll(Importer.AllRows.Count),
                         };
                         <button type="button" role="tab" aria-selected="@(active ? "true" : "false")"
                                 class="rounded-(--klyroo-radius) px-2.5 py-1 text-xs font-semibold @(active ? "bg-(--klyroo-bg-muted) text-(--klyroo-text-highlighted)" : "text-(--klyroo-text-muted) hover:text-(--klyroo-text)")"
@@ -582,22 +613,22 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
-                    <select aria-label="Severity"
+                    <select aria-label="@T.Severity"
                             class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2 text-xs"
                             data-slot="spreadsheet-review-level"
                             @onchange="@(e => Importer.SetReviewLevel(Enum.Parse<SpreadsheetReviewLevel>(e.Value?.ToString() ?? nameof(SpreadsheetReviewLevel.All))))">
-                        <option value="@SpreadsheetReviewLevel.All" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.All)">All severities</option>
-                        <option value="@SpreadsheetReviewLevel.Blocking" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.Blocking)">Errors</option>
-                        <option value="@SpreadsheetReviewLevel.Warnings" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.Warnings)">Warnings</option>
+                        <option value="@SpreadsheetReviewLevel.All" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.All)">@T.AllSeverities</option>
+                        <option value="@SpreadsheetReviewLevel.Blocking" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.Blocking)">@T.Errors</option>
+                        <option value="@SpreadsheetReviewLevel.Warnings" selected="@(Importer.ReviewLevel == SpreadsheetReviewLevel.Warnings)">@T.Warnings</option>
                     </select>
                     @{ var issueKinds = IssueKinds(); }
                     @if (issueKinds.Count > 0)
                     {
-                        <select aria-label="Issue"
+                        <select aria-label="@T.Issue"
                                 class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2 text-xs"
                                 data-slot="spreadsheet-review-issue"
                                 @onchange="@(e => Importer.SetReviewIssueFilter(e.Value?.ToString() ?? ""))">
-                            <option value="" selected="@(Importer.ReviewIssueFilter.Length == 0)">All issues</option>
+                            <option value="" selected="@(Importer.ReviewIssueFilter.Length == 0)">@T.AllIssues</option>
                             @foreach (var kind in issueKinds)
                             {
                                 <option value="@kind.Filter" selected="@(Importer.ReviewIssueFilter == kind.Filter)">@($"{kind.Label} ({kind.Count})")</option>
@@ -608,8 +639,8 @@
 
                 <input type="search"
                        value="@Importer.ReviewSearch"
-                       placeholder="Search rows…"
-                       aria-label="Search rows"
+                       placeholder="@T.SearchPlaceholder"
+                       aria-label="@T.SearchRows"
                        class="h-8 w-48 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                        data-slot="spreadsheet-review-search"
                        @oninput="@(e => Importer.SetReviewSearch(e.Value?.ToString() ?? ""))" />
@@ -622,7 +653,7 @@
                             class="inline-flex h-8 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
                             data-slot="spreadsheet-download-invalid"
                             @onclick="DownloadInvalidRowsAsync">
-                        @($"Download the {Importer.InvalidRows.Count:N0} invalid rows")
+                        @T.DownloadInvalidRows(Importer.InvalidRows.Count)
                     </button>
                     @RenderDownloadError()
                 </div>
@@ -631,13 +662,13 @@
             @if (Importer.SelectedRowIndexes.Count > 0)
             {
                 <div class="flex flex-wrap items-center gap-3 rounded-(--klyroo-radius) bg-(--klyroo-bg-muted) px-3 py-2 text-xs" data-slot="spreadsheet-selection-bar">
-                    <span class="font-semibold">@($"{Importer.SelectedRowIndexes.Count} selected")</span>
+                    <span class="font-semibold">@T.SelectedCount(Importer.SelectedRowIndexes.Count)</span>
                     <button type="button" class="font-medium text-(--klyroo-error-text) hover:underline" data-slot="spreadsheet-discard-selected"
-                            @onclick="@(() => { Importer.DiscardRows(Importer.SelectedRowIndexes.ToList()); Importer.ClearSelection(); })">Leave out</button>
+                            @onclick="@(() => { Importer.DiscardRows(Importer.SelectedRowIndexes.ToList()); Importer.ClearSelection(); })">@T.LeaveOut</button>
                     <button type="button" class="font-medium text-(--klyroo-primary-text) hover:underline" data-slot="spreadsheet-restore-selected"
-                            @onclick="@(() => { Importer.RestoreRows(Importer.SelectedRowIndexes.ToList()); Importer.ClearSelection(); })">Restore</button>
+                            @onclick="@(() => { Importer.RestoreRows(Importer.SelectedRowIndexes.ToList()); Importer.ClearSelection(); })">@T.Restore</button>
                     <button type="button" class="text-(--klyroo-text-muted) hover:underline" data-slot="spreadsheet-clear-selection"
-                            @onclick="Importer.ClearSelection">Clear selection</button>
+                            @onclick="Importer.ClearSelection">@T.ClearSelection</button>
                 </div>
             }
 
@@ -649,13 +680,13 @@
                         <thead class="border-b border-(--klyroo-border) bg-(--klyroo-bg-muted) font-semibold text-(--klyroo-text-muted)">
                             <tr>
                                 <th scope="col" class="w-8 px-2.5 py-2 text-start">
-                                    <input type="checkbox" aria-label="Select the rows of this page"
+                                    <input type="checkbox" aria-label="@T.SelectPageRows"
                                            checked="@(Importer.ReviewPageRows.Count > 0 && Importer.ReviewPageRows.All(r => Importer.SelectedRowIndexes.Contains(r.Index)))"
                                            data-slot="spreadsheet-select-all"
                                            @onchange="@(e => SelectVisibleRows(e.Value is true))" />
                                 </th>
-                                <th scope="col" class="w-16 px-2.5 py-2 text-start">Row</th>
-                                <th scope="col" class="w-24 px-2.5 py-2 text-start">Status</th>
+                                <th scope="col" class="w-16 px-2.5 py-2 text-start">@T.ColumnRow</th>
+                                <th scope="col" class="w-24 px-2.5 py-2 text-start">@T.ColumnStatus</th>
                                 @foreach (var f in Importer.Fields)
                                 {
                                     <th scope="col" class="px-3 py-2 text-start">@f.Column.EffectiveLabel</th>
@@ -671,7 +702,7 @@
                                     data-index="@row.Index"
                                     data-status="@row.Status.ToString().ToLowerInvariant()">
                                     <td class="px-2.5 py-1.5">
-                                        <input type="checkbox" aria-label="@($"Select row {row.RowNumber}")"
+                                        <input type="checkbox" aria-label="@T.SelectRow(row.RowNumber)"
                                                checked="@Importer.SelectedRowIndexes.Contains(row.Index)"
                                                data-slot="spreadsheet-row-select"
                                                @onchange="@(e => Importer.ToggleRowSelection(row.Index, e.Value is true))" />
@@ -679,7 +710,7 @@
                                     <td class="px-2.5 py-1.5">
                                         <button type="button"
                                                 class="font-mono font-semibold text-(--klyroo-primary-text) hover:underline"
-                                                aria-label="@($"Inspect row {row.RowNumber}")"
+                                                aria-label="@T.InspectRow(row.RowNumber)"
                                                 data-slot="spreadsheet-inspect-button"
                                                 @onclick="@(() => Importer.InspectRow(row.Index))">
                                             #@row.RowNumber
@@ -688,7 +719,7 @@
                                     <td class="px-2.5 py-1.5">
                                         <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold @(row.Status == SpreadsheetRowStatus.Blocking ? "bg-(--klyroo-error)/15 text-(--klyroo-error-text)" : row.Status == SpreadsheetRowStatus.Warning ? "bg-(--klyroo-warning)/15 text-(--klyroo-warning-text)" : "bg-(--klyroo-success)/15 text-(--klyroo-success-text)")"
                                               data-slot="spreadsheet-row-status">
-                                            @row.Status
+                                            @T.StatusText(row.Status)
                                         </span>
                                     </td>
                                     @foreach (var f in Importer.Fields)
@@ -700,7 +731,7 @@
                                             {
                                                 <input type="text"
                                                        value="@_editingText"
-                                                       aria-label="@($"Edit {f.Column.EffectiveLabel}")"
+                                                       aria-label="@T.EditCell(f.Column.EffectiveLabel)"
                                                        class="h-7 w-full rounded border border-(--klyroo-primary-text) bg-(--klyroo-bg) px-2 text-xs"
                                                        data-slot="spreadsheet-cell-editor"
                                                        @oninput="@(e => _editingText = e.Value?.ToString() ?? "")"
@@ -712,13 +743,13 @@
                                                 <button type="button"
                                                         disabled="@(isDiscarded || !f.Column.Editable)"
                                                         class="flex w-full items-center justify-between gap-1 text-start @(cell?.Issue is not null ? "text-(--klyroo-error-text) font-semibold" : "text-(--klyroo-text)")"
-                                                        title="@cell?.Issue?.Message"
+                                                        title="@(cell?.Issue is { } cellIssue ? T.ResolveIssue(cellIssue) : null)"
                                                         data-slot="spreadsheet-cell-trigger"
                                                         @onclick="@(() => StartCellEdit(row.Index, f.Column.Key, cell?.Text ?? ""))">
-                                                    <span>@(string.IsNullOrEmpty(cell?.DisplayText) ? "empty" : cell.DisplayText)</span>
+                                                    <span>@(string.IsNullOrEmpty(cell?.DisplayText) ? T.EmptyCell : cell.DisplayText)</span>
                                                     @if (cell?.Edited == true)
                                                     {
-                                                        <span class="text-[10px] text-(--klyroo-primary-text)" title="@($"Original: {cell.OriginalText}")">✎</span>
+                                                        <span class="text-[10px] text-(--klyroo-primary-text)" title="@T.OriginalValue(cell.OriginalText)">✎</span>
                                                     }
                                                 </button>
                                             }
@@ -730,7 +761,7 @@
                     </table>
                     @if (Importer.VisibleReviewRows.Count == 0)
                     {
-                        <p class="m-0 px-3 py-6 text-center text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-table-empty">No rows to show</p>
+                        <p class="m-0 px-3 py-6 text-center text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-table-empty">@T.NoRows</p>
                     }
                     @RenderPager()
                 </div>
@@ -740,16 +771,16 @@
                     <aside class="flex flex-col gap-3 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg-elevated) p-3.5 text-xs lg:col-span-4"
                            data-slot="spreadsheet-row-inspector">
                         <div class="flex items-center justify-between gap-2 border-b border-(--klyroo-border) pb-2">
-                            <span class="font-bold text-(--klyroo-text-highlighted)">Row @inspected.RowNumber</span>
+                            <span class="font-bold text-(--klyroo-text-highlighted)">@T.InspectorRow(inspected.RowNumber)</span>
                             <div class="flex items-center gap-1">
                                 <button type="button" class="rounded px-1.5 py-0.5 hover:bg-(--klyroo-bg-muted)"
-                                        aria-label="Previous row with issues" data-slot="inspector-prev"
+                                        aria-label="@T.PreviousIssueRow" data-slot="inspector-prev"
                                         @onclick="Importer.InspectPreviousIssueRow">‹</button>
                                 <button type="button" class="rounded px-1.5 py-0.5 hover:bg-(--klyroo-bg-muted)"
-                                        aria-label="Next row with issues" data-slot="inspector-next"
+                                        aria-label="@T.NextIssueRow" data-slot="inspector-next"
                                         @onclick="Importer.InspectNextIssueRow">›</button>
                                 <button type="button" class="rounded px-1.5 py-0.5 hover:bg-(--klyroo-bg-muted)"
-                                        aria-label="Close inspector" data-slot="inspector-close"
+                                        aria-label="@T.CloseInspector" data-slot="inspector-close"
                                         @onclick="@(() => Importer.InspectRow(null))">✕</button>
                             </div>
                         </div>
@@ -760,7 +791,7 @@
                                 @foreach (var issue in inspected.Issues)
                                 {
                                     <div class="rounded bg-(--klyroo-error)/10 px-2.5 py-1.5 text-(--klyroo-error-text)" data-slot="inspector-issue">
-                                        <strong>@(issue.Field ?? "Row"):</strong> @issue.Message
+                                        <strong>@(IssueFieldLabel(issue.Field)):</strong> @T.ResolveIssue(issue)
                                     </div>
                                 }
                             </div>
@@ -777,7 +808,7 @@
                                         <span><strong>@label:</strong> @cell.OriginalText → @cell.Text</span>
                                         <button type="button" class="font-medium text-(--klyroo-primary-text) hover:underline"
                                                 data-slot="inspector-revert"
-                                                @onclick="@(() => Importer.RevertCell(inspected.Index, fieldKey))">Undo</button>
+                                                @onclick="@(() => Importer.RevertCell(inspected.Index, fieldKey))">@T.Undo</button>
                                     </div>
                                 }
                             </div>
@@ -789,7 +820,7 @@
                                 <button type="button" class="font-medium text-(--klyroo-primary-text) hover:underline"
                                         data-slot="inspector-restore"
                                         @onclick="@(() => Importer.RestoreRows([inspected.Index]))">
-                                    Restore this row
+                                    @T.RestoreRow
                                 </button>
                             }
                             else if (inspected.DiscardReason is null)
@@ -797,7 +828,7 @@
                                 <button type="button" class="font-medium text-(--klyroo-error-text) hover:underline"
                                         data-slot="inspector-discard"
                                         @onclick="@(() => Importer.DiscardRows([inspected.Index]))">
-                                    Leave out this row
+                                    @T.LeaveOutRow
                                 </button>
                             }
                         </div>
@@ -807,7 +838,7 @@
         </div>;
 
     private RenderFragment RenderPager() =>
-        @<nav aria-label="Pagination" class="flex flex-wrap items-center justify-between gap-2 border-t border-(--klyroo-border) px-3 py-2 text-xs" data-slot="spreadsheet-pager">
+        @<nav aria-label="@T.Pagination" class="flex flex-wrap items-center justify-between gap-2 border-t border-(--klyroo-border) px-3 py-2 text-xs" data-slot="spreadsheet-pager">
             @{
                 var total = Importer.VisibleReviewRows.Count;
                 var page = Importer.ReviewPage;
@@ -816,19 +847,19 @@
                 var to = Math.Min(total, (page + 1) * Importer.ReviewPageSize);
                 const string pagerButton = "inline-flex h-8 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted) disabled:opacity-40";
             }
-            <span class="tabular-nums text-(--klyroo-text-muted)" data-slot="spreadsheet-pager-range">@($"Rows {from:N0} to {to:N0} of {total:N0}")</span>
+            <span class="tabular-nums text-(--klyroo-text-muted)" data-slot="spreadsheet-pager-range">@T.RowsRange(from, to, total)</span>
             <div class="flex flex-wrap items-center gap-2">
-                <button type="button" class="@pagerButton" disabled="@(page == 0)" aria-label="First page" data-slot="spreadsheet-pager-first"
+                <button type="button" class="@pagerButton" disabled="@(page == 0)" aria-label="@T.FirstPage" data-slot="spreadsheet-pager-first"
                         @onclick="@(() => Importer.SetReviewPage(0))">«</button>
-                <button type="button" class="@pagerButton" disabled="@(page == 0)" aria-label="Previous page" data-slot="spreadsheet-pager-prev"
+                <button type="button" class="@pagerButton" disabled="@(page == 0)" aria-label="@T.PreviousPage" data-slot="spreadsheet-pager-prev"
                         @onclick="@(() => Importer.SetReviewPage(page - 1))">‹</button>
-                <span class="tabular-nums text-(--klyroo-text-muted)" data-slot="spreadsheet-pager-status">@($"Page {page + 1:N0} of {pageCount:N0}")</span>
-                <button type="button" class="@pagerButton" disabled="@(page >= pageCount - 1)" aria-label="Next page" data-slot="spreadsheet-pager-next"
+                <span class="tabular-nums text-(--klyroo-text-muted)" data-slot="spreadsheet-pager-status">@T.PageOf(page + 1, pageCount)</span>
+                <button type="button" class="@pagerButton" disabled="@(page >= pageCount - 1)" aria-label="@T.NextPage" data-slot="spreadsheet-pager-next"
                         @onclick="@(() => Importer.SetReviewPage(page + 1))">›</button>
-                <button type="button" class="@pagerButton" disabled="@(page >= pageCount - 1)" aria-label="Last page" data-slot="spreadsheet-pager-last"
+                <button type="button" class="@pagerButton" disabled="@(page >= pageCount - 1)" aria-label="@T.LastPage" data-slot="spreadsheet-pager-last"
                         @onclick="@(() => Importer.SetReviewPage(pageCount - 1))">»</button>
                 <label class="flex items-center gap-1.5">
-                    <span class="text-(--klyroo-text-muted)">Rows per page</span>
+                    <span class="text-(--klyroo-text-muted)">@T.RowsPerPage</span>
                     <select class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2 text-xs"
                             data-slot="spreadsheet-pager-size"
                             @onchange="OnPageSizeChange">
@@ -858,19 +889,19 @@
             {
                 <dl class="m-0 grid grid-cols-2 gap-3 rounded-(--klyroo-radius) border border-(--klyroo-border) p-4 text-xs sm:grid-cols-4" data-slot="spreadsheet-summary">
                     <div>
-                        <dt class="text-(--klyroo-text-muted)">Rows to import</dt>
+                        <dt class="text-(--klyroo-text-muted)">@T.SummaryToImport</dt>
                         <dd class="m-0 text-base font-bold tabular-nums text-(--klyroo-text-highlighted)">@Importer.ImportableRows.Count</dd>
                     </div>
                     <div>
-                        <dt class="text-(--klyroo-text-muted)">Invalid, not imported</dt>
+                        <dt class="text-(--klyroo-text-muted)">@T.SummaryInvalid</dt>
                         <dd class="m-0 text-base font-bold tabular-nums text-(--klyroo-error-text)">@Importer.InvalidRows.Count</dd>
                     </div>
                     <div>
-                        <dt class="text-(--klyroo-text-muted)">Left out</dt>
+                        <dt class="text-(--klyroo-text-muted)">@T.SummaryLeftOut</dt>
                         <dd class="m-0 text-base font-bold tabular-nums text-(--klyroo-text-muted)">@Importer.DiscardedRows.Count</dd>
                     </div>
                     <div>
-                        <dt class="text-(--klyroo-text-muted)">Cells edited</dt>
+                        <dt class="text-(--klyroo-text-muted)">@T.SummaryEdited</dt>
                         <dd class="m-0 text-base font-bold tabular-nums text-(--klyroo-text-highlighted)">@Importer.AllRows.Count(r => r.Edited)</dd>
                     </div>
                 </dl>
@@ -881,18 +912,18 @@
                     <div class="flex items-center justify-between text-xs font-semibold">
                         <span data-slot="spreadsheet-progress-label">@(Importer.SubmitStatus switch
                         {
-                            SpreadsheetSubmitStatus.Running => "Importing…",
-                            SpreadsheetSubmitStatus.Done => $"{Importer.ImportedCount} rows imported",
-                            SpreadsheetSubmitStatus.Cancelled => "The import was cancelled",
-                            _ => "The import failed",
+                            SpreadsheetSubmitStatus.Running => T.Importing,
+                            SpreadsheetSubmitStatus.Done => T.RowsImported(Importer.ImportedCount),
+                            SpreadsheetSubmitStatus.Cancelled => T.ImportCancelled,
+                            _ => T.ImportFailed,
                         })</span>
-                        <span class="tabular-nums text-(--klyroo-text-muted)">@($"{Importer.SubmitDone} of {Importer.SubmitTotal}")</span>
+                        <span class="tabular-nums text-(--klyroo-text-muted)">@T.Progress(Importer.SubmitDone, Importer.SubmitTotal)</span>
                     </div>
 
                     @if (Importer.SubmitStatus is SpreadsheetSubmitStatus.Error or SpreadsheetSubmitStatus.Cancelled)
                     {
                         <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-submit-resume">
-                            @($"{Importer.ImportedCount} rows are already imported and will not be sent again.")
+                            @T.AlreadyImported(Importer.ImportedCount)
                             @if (Importer.SubmitError is not null)
                             {
                                 <span class="block font-medium text-(--klyroo-error-text)" role="alert" data-slot="spreadsheet-submit-error">@Importer.SubmitError</span>
@@ -904,17 +935,17 @@
                     {
                         <div class="flex items-center justify-between gap-2 rounded bg-(--klyroo-error)/10 p-3 text-xs text-(--klyroo-error-text)"
                              data-slot="spreadsheet-rejected-box">
-                            <span>Rows refused: @Importer.RejectedCount</span>
+                            <span>@T.RowsRefused(Importer.RejectedCount)</span>
                             <div class="flex items-center gap-2">
                                 <button type="button" class="font-semibold underline"
                                         data-slot="spreadsheet-retry-rejected"
                                         @onclick="@(() => Importer.RetryRejectedAsync())">
-                                    Send them again
+                                    @T.SendAgain
                                 </button>
                                 <button type="button" class="font-semibold underline"
                                         data-slot="spreadsheet-see-rejected"
                                         @onclick="@(() => { Importer.SetReviewTab(SpreadsheetReviewTab.Invalid); Importer.GoToStep("review"); })">
-                                    See them
+                                    @T.SeeThem
                                 </button>
                             </div>
                         </div>
@@ -966,7 +997,7 @@
             var file = e.File;
             if (file.Size > MaxFileSize)
             {
-                _fileError = $"The file is larger than {MaxFileSize / (1024 * 1024)} MB.";
+                _fileError = T.FileTooLarge((int)(MaxFileSize / (1024 * 1024)));
                 return;
             }
             await using var stream = file.OpenReadStream(MaxFileSize);
@@ -986,7 +1017,7 @@
         DownloadAsync(new SpreadsheetDownload($"{SpreadsheetDownload.Slug(Importer.Schema.Key)}-template.csv", Importer.ExportTemplateCsv(), SpreadsheetDownload.CsvMimeType));
 
     private Task DownloadInvalidRowsAsync() =>
-        DownloadAsync(new SpreadsheetDownload($"{SpreadsheetDownload.Slug(Importer.Schema.Key)}-invalid-rows.csv", Importer.ExportInvalidRowsCsv(), SpreadsheetDownload.CsvMimeType));
+        DownloadAsync(new SpreadsheetDownload($"{SpreadsheetDownload.Slug(Importer.Schema.Key)}-invalid-rows.csv", Importer.ExportInvalidRowsCsv(T.ResolveIssue, T.IssuesColumn), SpreadsheetDownload.CsvMimeType));
 
     // The host's OnDownload takes the file when it is set (MAUI, custom saving); otherwise the browser saves it through a small module.
     private async Task DownloadAsync(SpreadsheetDownload file)
@@ -1004,7 +1035,7 @@
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
         {
-            _downloadError = $"The file could not be downloaded: {ex.Message}";
+            _downloadError = T.DownloadFailed(ex.Message);
         }
     }
 
@@ -1054,6 +1085,10 @@
             .OrderByDescending(x => x.Count)
             .ToList();
     }
+
+    // The label of the column an issue belongs to, or "Row" for an issue of the whole row.
+    private string IssueFieldLabel(string? field) =>
+        field is null ? T.WholeRow : Importer.Fields.FirstOrDefault(f => f.Column.Key == field)?.Column.EffectiveLabel ?? field;
 
     private void StartCellEdit(int rowIndex, string fieldKey, string currentText)
     {
