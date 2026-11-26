@@ -74,46 +74,44 @@ Headless, with `Klyroo.Spreadsheet.Core`:
 ```csharp
 using Klyroo.Spreadsheet;
 
-var schema = new SpreadsheetSchema
+var schema = SpreadsheetSchema.For<PriceRow>(s =>
 {
-    Columns =
+    s.Column(r => r.Sku, c => c.Label("SKU").Required());
+    s.Column(r => r.Price, c => c.Label("Unit price").DecimalSeparator(',').Required().Rule(SpreadsheetRule.Min(0m)));
+    s.Column(r => r.Currency, c => c.Options(
     [
-        new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
-        new SpreadsheetColumnSchema
-        {
-            Key = "price",
-            Label = "Unit price",
-            Kind = SpreadsheetColumnKind.Number,
-            DecimalSeparator = ',',
-            Required = true,
-            Rules = [SpreadsheetRule.Min(0)],
-        },
-        new SpreadsheetColumnSchema
-        {
-            Key = "currency",
-            Kind = SpreadsheetColumnKind.Select,
-            Required = true,
-            Options = [new("EUR", "Euro", ["€"]), new("USD", "US dollar", ["$"])],
-        },
-    ],
-    OnSubmit = rows =>
+        new SpreadsheetOption<Currency>(Currency.Eur, "Euro", ["€"]),
+        new SpreadsheetOption<Currency>(Currency.Usd, "US dollar", ["$"]),
+    ]));
+    s.OnSubmit = rows =>
     {
         foreach (var row in rows)
         {
-            Console.WriteLine($"{row.Data["sku"]}: {row.Data["price"]} {row.Data["currency"]}");
+            Console.WriteLine($"{row.Value.Sku}: {row.Value.Price} {row.Value.Currency}");
         }
         return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null);
-    },
-};
+    };
+});
 
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<PriceRow>(schema);
 importer.LoadText("SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD", "prices.csv");
 
 Console.WriteLine(importer.ImportableRows.Count); // 1
 Console.WriteLine(importer.InvalidRows.Count);    // 1: A-2 has a negative price
 
 await importer.SubmitAsync();
+
+public enum Currency { Eur, Usd }
+
+public sealed class PriceRow
+{
+    public string? Sku { get; set; }
+    public decimal Price { get; set; }
+    public Currency Currency { get; set; }
+}
 ```
+
+The schema is typed by a row class. Each column is a property picked with a member expression, and its kind follows the property type: text for `string`, a number for `int`, `decimal` and the other numeric types, yes or no for `bool`, a date for `DateOnly`, `DateTime` and `DateTimeOffset`, and a choice for an enum or for any column with `Options`. A property that cannot hold an empty cell (`decimal`, `bool`, an enum) is required, so use `decimal?` when the cell may stay empty. The callbacks receive `SpreadsheetRow<PriceRow>`, which carries the parsed row in `Value`.
 
 In Blazor, give the same importer to `KlySpreadsheetImport`. Users choose or drop a CSV, TSV or `.xlsx` file on its first step, or paste rows copied from a spreadsheet:
 
@@ -124,28 +122,27 @@ In Blazor, give the same importer to `KlySpreadsheetImport`. Users choose or dro
 <KlySpreadsheetImport Importer="_importer" Title="Import prices" />
 
 @code {
-    private SpreadsheetImporter _importer = default!;
+    private SpreadsheetImporter<PriceRow> _importer = default!;
 
     protected override void OnInitialized()
     {
-        _importer = new SpreadsheetImporter(new SpreadsheetSchema
+        _importer = new SpreadsheetImporter<PriceRow>(SpreadsheetSchema.For<PriceRow>(s =>
         {
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
-                new SpreadsheetColumnSchema { Key = "price", Kind = SpreadsheetColumnKind.Number, Required = true },
-            ],
-            OnSubmit = SaveAsync,
-        });
+            s.Column(r => r.Sku, c => c.Label("SKU").Required());
+            s.Column(r => r.Price, c => c.Required());
+            s.OnSubmit = SaveAsync;
+        }));
     }
 
-    private Task<IReadOnlyList<SpreadsheetRejectedRow>?> SaveAsync(IReadOnlyList<SpreadsheetRow> rows)
+    private Task<IReadOnlyList<SpreadsheetRejectedRow>?> SaveAsync(IReadOnlyList<SpreadsheetRow<PriceRow>> rows)
     {
-        // Persist rows here. Return the rows the server refused, or null.
+        // Persist rows.Select(r => r.Value) here. Return the rows the server refused, or null.
         return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null);
     }
 }
 ```
+
+`KlySpreadsheetImport` takes the non-generic `SpreadsheetImporter`, because it reads and edits cells as text and never touches your row type, so a `SpreadsheetImporter<PriceRow>` is passed as it is.
 
 ## Documentation
 

@@ -22,45 +22,41 @@ Each guide solves one task and assumes you read [Getting started](getting-starte
 Goal: turn cells into typed values and report the cells that do not fit.
 
 ```csharp
-var schema = new SpreadsheetSchema
+public sealed class Product
 {
-    MaxRows = 10_000,
-    Columns =
-    [
-        new SpreadsheetColumnSchema
-        {
-            Key = "sku",
-            Label = "SKU",
-            Required = true,
-            Rules =
-            [
-                SpreadsheetRule.Pattern("^[A-Z]{2}-[0-9]{3}$", "Use the form AB-123"),
-                new SpreadsheetRule("not-reserved", "ZZ- codes are reserved",
-                    v => v is string s && !s.StartsWith("ZZ-", StringComparison.Ordinal)),
-            ],
-        },
-        new SpreadsheetColumnSchema { Key = "available", Kind = SpreadsheetColumnKind.Boolean, HasDefault = true, DefaultValue = true },
-        new SpreadsheetColumnSchema { Key = "launch", Kind = SpreadsheetColumnKind.Date, DateFormats = ["dd/MM/yyyy"] },
-        new SpreadsheetColumnSchema
-        {
-            Key = "weightKg",
-            Label = "Weight (kg)",
-            Kind = SpreadsheetColumnKind.Number,
-            Rules = [SpreadsheetRule.Max(30, "Too heavy to ship", SpreadsheetIssueLevel.Warning)],
-        },
-    ],
-};
+    public string Sku { get; set; } = "";
+    public bool Available { get; set; }
+    public DateOnly? Launch { get; set; }
+    public double? WeightKg { get; set; }
+}
 
-var importer = new SpreadsheetImporter(schema);
+var schema = SpreadsheetSchema.For<Product>(s =>
+{
+    s.MaxRows = 10_000;
+    s.Column(r => r.Sku, c => c
+        .Label("SKU")
+        .Required()
+        .Rule(SpreadsheetRule.Pattern("^[A-Z]{2}-[0-9]{3}$", "Use the form AB-123"))
+        .Rule("not-reserved", "ZZ- codes are reserved", sku => !sku.StartsWith("ZZ-", StringComparison.Ordinal)));
+    s.Column(r => r.Available, c => c.Default(true));
+    s.Column(r => r.Launch, c => c.DateFormats("dd/MM/yyyy"));
+    s.Column(r => r.WeightKg, c => c
+        .Label("Weight (kg)")
+        .Rule(SpreadsheetRule.Max(30d, "Too heavy to ship", SpreadsheetIssueLevel.Warning)));
+});
+
+var importer = new SpreadsheetImporter<Product>(schema);
 importer.LoadText("SKU,Available,Launch,Weight (kg)\nAB-123,oui,01/03/2026,12\nZZ-001,,15/03/2026,45\nab-12,no,2026-03-20,3", "catalog.csv");
 
-Console.WriteLine(importer.AllRows[0].Data["launch"]);    // 2026-03-01
-Console.WriteLine(importer.AllRows[1].Data["available"]); // True
+Console.WriteLine(importer.ToTyped(importer.AllRows[0]).Value.Launch?.ToString("O")); // 2026-03-01
+Console.WriteLine(importer.ToTyped(importer.AllRows[1]).Value.Available);             // True
 ```
+
+The kind of each column comes from the property type, and the value of each cell is read into that type. `Sku` is a `string`, so the cell text is the value. `Available` is a `bool`, `Launch` a date and `WeightKg` a number. A nullable property (`DateOnly?`, `double?`) stores `null` for an empty cell and makes the column optional, while a property that cannot hold `null` (`bool`, `int`, an enum) makes its column required unless you give it a `Default`, because an empty cell cannot be stored in it. `ToTyped(row)` gives the `SpreadsheetRow<Product>` of a row, whose `Value` is the filled `Product`; `row.Cells` stays the text of each cell.
 
 What happens for each row of that file:
 
-- Row 2 is valid. `oui` is a true value, and the date is stored as the ISO string `2026-03-01`.
+- Row 2 is valid. `oui` is a true value, and the date is stored as the `DateOnly` 2026-03-01.
 - Row 3 is blocked by the `not-reserved` rule. Its empty `Available` cell takes the default, and its weight raises a warning (code `max`) that does not block the row.
 - Row 4 is blocked twice: `ab-12` fails the pattern, and `2026-03-20` is not in the only format this column accepts, so you get a `date` error.
 
@@ -68,9 +64,16 @@ What happens for each row of that file:
 
 A timeout costs the full timeout, so a hostile file of 50,000 cells could still cost 50,000 times 100 ms. A circuit breaker prevents that: after `SpreadsheetSchema.RuleTimeoutLimit` timeouts (3 by default, zero or less turns it off) the importer stops evaluating that rule for the rest of the read and lists it once in `importer.DisabledRules` (column key, rule code, timeouts). The component shows one notice naming the column and the rule. The values after the rule stopped are not waved through: each gets the same "could not be checked in time" issue, at the severity of the rule (blocking for the default), without running the regex, so a hostile file cannot make its later values importable. Reading the file again (a new file, sheet, header row or column choice) starts the count again.
 
-Three details are easy to miss. A rule only runs on a non-empty value that parsed. The `Min`, `Max` and `Between` rules only accept a `double`, so use them on `Number` columns. And `DefaultValue` is applied only when `HasDefault` is `true`, which lets a default be `null` on purpose.
+Three details are easy to miss. A rule only runs on a non-empty value that parsed, and it is typed like the column: `Pattern` and `Email` are `SpreadsheetRule<string?>` rules for text columns, and `Min`, `Max` and `Between` take the number type of the column (`Max(30d)` for a `double`, `Max(30m)` for a `decimal`, `Min(0)` for an `int`). A nullable column takes the rule of its underlying type, so `Min(0)` fits an `int?`. And `Default` sets the value used for an empty cell, which for a nullable column may be `null` on purpose (`Default(null)`).
 
-The built-in boolean values are `yes`, `y`, `oui`, `o`, `true`, `vrai`, `x`, `1` and `no`, `n`, `non`, `false`, `faux`, `0`. For anything else, set `CustomParse` on the column: it receives the cell text, returns the value, and an exception becomes an error on the cell with the exception message.
+The built-in boolean values are `yes`, `y`, `oui`, `o`, `true`, `vrai`, `x`, `1` and `no`, `n`, `non`, `false`, `faux`, `0`. For anything else, give the column a `Parser`: it receives the cell text and returns `SpreadsheetParseResult<T>.Ok(value)` or `SpreadsheetParseResult<T>.Fail("message")`, and an exception becomes an error on the cell with the exception message. A parser also lets a column have a type the library does not read by itself, such as a `Guid`:
+
+```csharp
+s.Column(r => r.Token, c => c.Parser(text =>
+    Guid.TryParse(text, out var token)
+        ? SpreadsheetParseResult<Guid?>.Ok(token)
+        : SpreadsheetParseResult<Guid?>.Fail("Not a token")));
+```
 
 ## Cope with banners, renamed headers and wrong sheets
 
@@ -79,26 +82,23 @@ Goal: accept exports whose header is not on the first row or is spelled differen
 By default the importer scans the first 20 rows of each sheet and picks the row that matches the most columns, so a title above the header is ignored. List alternative spellings in `Headers`:
 
 ```csharp
-var schema = new SpreadsheetSchema
+public sealed class Person
 {
-    Columns =
-    [
-        new SpreadsheetColumnSchema { Key = "email", Headers = ["E-mail", "Courriel"], Required = true },
-        new SpreadsheetColumnSchema
-        {
-            Key = "age",
-            Kind = SpreadsheetColumnKind.Number,
-            Required = true,
-            Rules = [SpreadsheetRule.Between(0, 120)],
-        },
-    ],
-};
+    public string? Email { get; set; }
+    public int Age { get; set; }
+}
 
-var importer = new SpreadsheetImporter(schema);
+var schema = SpreadsheetSchema.For<Person>(s =>
+{
+    s.Column(r => r.Email, c => c.Headers("E-mail", "Courriel").Required());
+    s.Column(r => r.Age, c => c.Rule(SpreadsheetRule.Between(0, 120)));
+});
+
+var importer = new SpreadsheetImporter<Person>(schema);
 importer.LoadText("Export 2026;;\nE-mail;Years\nada@example.com;31\nalan@example.com;45", "people.csv");
 
 Console.WriteLine(importer.HeaderRowNumber);       // 2
-var missing = importer.MissingFields[0];           // the "age" column
+var missing = importer.MissingFields[0];           // the "Age" column
 Console.WriteLine(missing.Suggestion?.HeaderText); // Years
 
 if (missing.Suggestion is { } suggestion)
@@ -108,17 +108,17 @@ if (missing.Suggestion is { } suggestion)
 Console.WriteLine(importer.CanSubmit);             // True
 ```
 
-`Years` matches no name, so `age` is missing. Because `age` is a number column with a rule, the importer proposes the unused `Years` column: at least 80% of up to 30 sampled values parse and pass. The suggestion is never applied for you. Show it to the user, or apply it as above when you trust it.
+`Years` matches no name, so `Age` is missing. Because `Age` is a number column with a rule, the importer proposes the unused `Years` column: at least 80% of up to 30 sampled values parse and pass. The suggestion is never applied for you. Show it to the user, or apply it as above when you trust it.
 
 When detection is wrong or you know the layout, force it. `ForcedHeaderRow` is the 1-based row number in the file:
 
 ```csharp
-var schema = new SpreadsheetSchema
+var schema = SpreadsheetSchema.For<Product>(s =>
 {
-    ForcedSheet = "Prices",
-    ForcedHeaderRow = 4,
-    Columns = [new SpreadsheetColumnSchema { Key = "sku", Required = true }],
-};
+    s.ForcedSheet = "Prices";
+    s.ForcedHeaderRow = 4;
+    s.Column(r => r.Sku, c => c.Required());
+});
 ```
 
 For workbooks with several sheets, `importer.AmbiguousDetection` is `true` when more than one sheet matched equally well and the first was taken. Let the user pick with `SetSheet(name)`, and use `SetHeaderRow(index)` to move the header.
@@ -127,30 +127,29 @@ For workbooks with several sheets, `importer.AmbiguousDetection` is `true` when 
 
 Goal: decide what to do when a file says `Gold` and your list only has `pro`.
 
-A `Select` column compares each cell, ignoring case and accents, to the option value, the option label and its aliases. A cell with no match becomes a `SpreadsheetValueQuestion`, and by default the import cannot be submitted until every question is answered:
+A select column (an enum property, or any column with `Options`) compares each cell, ignoring case and accents, to the option value, the option label and its aliases. A cell with no match becomes a `SpreadsheetValueQuestion`, and by default the import cannot be submitted until every question is answered:
 
 ```csharp
-var createdTiers = new List<string>();
-var schema = new SpreadsheetSchema
+public sealed class Account
 {
-    Columns =
-    [
-        new SpreadsheetColumnSchema { Key = "name", Required = true },
-        new SpreadsheetColumnSchema
-        {
-            Key = "tier",
-            Kind = SpreadsheetColumnKind.Select,
-            Options = [new("std", "Standard", ["basic"]), new("pro", "Professional")],
-            OnCreateOption = raw =>
-            {
-                createdTiers.Add(raw);
-                return new SpreadsheetOption(raw, raw);
-            },
-        },
-    ],
-};
+    public string? Name { get; set; }
+    public string? Tier { get; set; }
+}
 
-var importer = new SpreadsheetImporter(schema);
+var createdTiers = new List<string>();
+var schema = SpreadsheetSchema.For<Account>(s =>
+{
+    s.Column(r => r.Name, c => c.Required());
+    s.Column(r => r.Tier, c => c
+        .Options([new SpreadsheetOption<string?>("std", "Standard", ["basic"]), new SpreadsheetOption<string?>("pro", "Professional")])
+        .OnCreateOption(raw =>
+        {
+            createdTiers.Add(raw);
+            return new SpreadsheetOption<string?>(raw, raw);
+        }));
+});
+
+var importer = new SpreadsheetImporter<Account>(schema);
 importer.LoadText("Name,Tier\nAcme,Basic\nBeta,Gold\nGamma,Platinum\nDelta,Legacy", "accounts.csv");
 
 foreach (var question in importer.OpenQuestions)
@@ -158,122 +157,125 @@ foreach (var question in importer.OpenQuestions)
     Console.WriteLine($"{question.RawValue}: {question.RowIndexes.Count} row(s)");
 }
 
-importer.AnswerValue("tier", "Gold", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "pro", "Professional"));
-importer.AnswerValue("tier", "Platinum", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
-importer.AnswerValue("tier", "Legacy", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.SkipRows));
+importer.AnswerValue("Tier", "Gold", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "pro", "Professional"));
+importer.AnswerValue("Tier", "Platinum", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+importer.AnswerValue("Tier", "Legacy", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.SkipRows));
 
 Console.WriteLine(importer.CanSubmit);             // True
 await importer.SubmitAsync();
 Console.WriteLine(string.Join(",", createdTiers)); // Platinum
 ```
 
-`Basic` matched the alias, so only three questions were asked. One answer applies to every row that has the value. The four actions are `Map` (use an existing option), `LeaveEmpty`, `SkipRows` (leave those rows out) and `Create` (keep the text as a new value). `OnCreateOption` runs once per created value when you submit, before any row is sent, so it is the place to insert the new option in your database. The rows then carry the option it returns (its `Value` in `row.Data`, its label in the review), and a retry does not create it again.
+`Basic` matched the alias, so only three questions were asked. One answer applies to every row that has the value. The four actions are `Map` (use an existing option), `LeaveEmpty`, `SkipRows` (leave those rows out) and `Create` (keep the text as a new value). `OnCreateOption` runs once per created value when you submit, before any row is sent, so it is the place to insert the new option in your database. The rows then carry the option it returns (its `Value` in the row property, its label in the review), and a retry does not create it again.
 
-To skip the questions, set `UnknownPolicy` on the column. `LeaveEmpty`, `SkipRows` and `Create` answer for the user. `Error` does not ask and blocks each row with the unknown value:
+An enum property needs no `Options`: the column offers one option per member, the member name is the value and its name in words the label (`ProMonthly` is `Pro monthly`), and a cell matches either. Give `Options` to replace them with labels and aliases of your own (`new SpreadsheetOption<Plan>(Plan.Free, "Gratuit", ["0"])`). Options can hold a `string`, an enum, a number, a `bool` or a `Guid`. `OnCreateOption` returns an option of the property type, so it is meant for text columns: a new enum member cannot be created from a cell.
+
+To skip the questions, call `UnknownPolicy` on the column. `LeaveEmpty`, `SkipRows` and `Create` answer for the user. `Error` does not ask and blocks each row with the unknown value:
 
 ```csharp
-var country = new SpreadsheetColumnSchema
-{
-    Key = "country",
-    Kind = SpreadsheetColumnKind.Select,
-    Options = [new("FR", "France"), new("DE", "Germany")],
-    UnknownPolicy = SpreadsheetUnknownValuePolicy.LeaveEmpty,
-};
+s.Column(r => r.Country, c => c
+    .Options([new SpreadsheetOption<string?>("FR", "France"), new SpreadsheetOption<string?>("DE", "Germany")])
+    .UnknownPolicy(SpreadsheetUnknownValuePolicy.LeaveEmpty));
 ```
 
 ## Handle duplicates and existing records
 
 Goal: avoid importing the same key twice, and update records you already store.
 
-Name the key column with `RowKeyField`. Two independent checks use it. `Duplicates` decides what happens when the file repeats a key: `Error` (the default) blocks every row of the key, `KeepFirst` and `KeepLast` leave the others out. `ExistingRecords` holds the keys you already have, and `ExistingAction` decides what to do with a row that matches one:
+Name the key column with `RowKey`, which takes the column `Column` returned. Two independent checks use it. `Duplicates` decides what happens when the file repeats a key: `Error` (the default) blocks every row of the key, `KeepFirst` and `KeepLast` leave the others out. `ExistingRecords` holds the records you already have, keyed by the text of the row key, and `ExistingAction` decides what to do with a row that matches one:
 
 ```csharp
-var stored = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase)
+public sealed class StockLine
 {
-    ["A-1"] = new Dictionary<string, object?> { ["sku"] = "A-1", ["stock"] = 4.0 },
+    public string? Sku { get; set; }
+    public int Stock { get; set; }
+}
+
+var stored = new Dictionary<string, StockLine>(StringComparer.OrdinalIgnoreCase)
+{
+    ["A-1"] = new StockLine { Sku = "A-1", Stock = 4 },
 };
 
-var schema = new SpreadsheetSchema
+var schema = SpreadsheetSchema.For<StockLine>(s =>
 {
-    RowKeyField = "sku",
-    Duplicates = SpreadsheetDuplicatesPolicy.KeepLast,
-    ExistingRecords = stored,
-    ExistingAction = SpreadsheetExistingAction.Update,
-    Columns =
-    [
-        new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
-        new SpreadsheetColumnSchema { Key = "stock", Kind = SpreadsheetColumnKind.Number, Required = true },
-    ],
-};
+    s.RowKey(s.Column(r => r.Sku, c => c.Label("SKU").Required()));
+    s.Column(r => r.Stock);
+    s.Duplicates = SpreadsheetDuplicatesPolicy.KeepLast;
+    s.ExistingRecords = stored;
+    s.ExistingAction = SpreadsheetExistingAction.Update;
+});
 
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<StockLine>(schema);
 importer.LoadText("SKU,Stock\nA-1,10\nB-2,5\nB-2,7", "stock.csv");
 
-foreach (var row in importer.ImportableRows)
+foreach (var row in importer.ImportableTypedRows)
 {
-    Console.WriteLine($"{row.Data["sku"]} {row.Mode} {row.Data["stock"]}");
+    Console.WriteLine($"{row.Value.Sku} {row.Mode} {row.Value.Stock}");
 }
 // A-1 Update 10
 // B-2 Create 7
 ```
 
-Each importable row carries a `Mode` of `Create` or `Update`, so your `OnSubmit` can branch on it. The two checks compare keys differently: duplicates inside the file ignore case and surrounding spaces, but the lookup in `ExistingRecords` uses the dictionary's own comparer on the exact cell text. Build the dictionary with `StringComparer.OrdinalIgnoreCase` as above if your keys are case-insensitive. The values inside `ExistingRecords` are not read by the importer, only the keys.
+Each importable row carries a `Mode` of `Create` or `Update`, so your `OnSubmit` can branch on it. The two checks compare keys differently: duplicates inside the file ignore case and surrounding spaces, but the lookup in `ExistingRecords` uses the dictionary's own comparer on the exact cell text. Build the dictionary with `StringComparer.OrdinalIgnoreCase` as above if your keys are case-insensitive. The records inside `ExistingRecords` are not read by the importer, only the keys. A key that is not text (an `int` or a date column) is written with the invariant culture, so `42` looks up `"42"`.
 
 ## Validate across fields
 
 Goal: reject a row because two cells disagree, which no single column rule can express.
 
-`ValidateRow` runs after the column rules and receives the parsed values by column key. Return the issues to add:
+`ValidateRow` runs after the column rules and receives the row as an instance of your row class. Return the issues to add:
 
 ```csharp
-var schema = new SpreadsheetSchema
+public sealed class Booking
 {
-    Columns =
-    [
-        new SpreadsheetColumnSchema { Key = "start", Kind = SpreadsheetColumnKind.Date, Required = true },
-        new SpreadsheetColumnSchema { Key = "end", Kind = SpreadsheetColumnKind.Date, Required = true },
-    ],
-    ValidateRow = row =>
-    {
-        if (row["start"] is string start && row["end"] is string end && string.CompareOrdinal(end, start) < 0)
-        {
-            return [new SpreadsheetRowIssue("end", "range", SpreadsheetIssueLevel.Error, "End is before start")];
-        }
-        return [];
-    },
-};
+    public DateOnly? Start { get; set; }
+    public DateOnly? End { get; set; }
+}
+
+var schema = SpreadsheetSchema.For<Booking>(s =>
+{
+    s.Column(r => r.Start, c => c.Required());
+    s.Column(r => r.End, c => c.Required());
+    s.ValidateRow = row => row is { Start: { } start, End: { } end } && end < start
+        ? [new SpreadsheetRowIssue("End", "range", SpreadsheetIssueLevel.Error, "End is before start")]
+        : [];
+});
 ```
 
-Dates arrive as ISO 8601 strings (`yyyy-MM-dd`, or `yyyy-MM-ddTHH:mm` with a time), so comparing them as strings orders them correctly. Set `Field` to a column key to show the issue on that cell, or `null` to attach it to the whole row.
+Dates arrive as real dates, so you compare them as dates. A cell that is empty or could not be read leaves its property at the default of its type, and `ValidateRow` still runs on that row, so use nullable properties and test them as above: a `DateOnly` would be `0001-01-01` and make `end < start` fire on top of the error the cell already has. Set `Field` to a column key to show the issue on that cell, or `null` to attach it to the whole row.
 
 ## Submit in batches and retry rejected rows
 
 Goal: save rows in chunks and send again the rows the server refused.
 
-`SubmitAsync` calls `OnSubmit` with batches of `BatchSize` importable rows (all rows at once when it is zero). The callback returns the refused rows by `Index`:
+`SubmitAsync` calls `OnSubmit` with batches of `BatchSize` importable rows (all rows at once when it is zero). Each row is a `SpreadsheetRow<TRow>`: `Value` is your parsed row, and `Index` is what the callback returns the refused rows by:
 
 ```csharp
-var lockedAccounts = new HashSet<string> { "bob@example.com" };
-var schema = new SpreadsheetSchema
+public sealed class Subscriber
 {
-    BatchSize = 100,
-    Columns = [new SpreadsheetColumnSchema { Key = "email", Required = true, Rules = [SpreadsheetRule.Email()] }],
-    OnSubmit = async rows =>
+    public string? Email { get; set; }
+}
+
+var lockedAccounts = new HashSet<string> { "bob@example.com" };
+var schema = SpreadsheetSchema.For<Subscriber>(s =>
+{
+    s.BatchSize = 100;
+    s.Column(r => r.Email, c => c.Required().Rule(SpreadsheetRule.Email()));
+    s.OnSubmit = async rows =>
     {
         var rejected = new List<SpreadsheetRejectedRow>();
         foreach (var row in rows)
         {
-            if (lockedAccounts.Contains((string)row.Data["email"]!))
+            if (lockedAccounts.Contains(row.Value.Email!))
             {
-                rejected.Add(new SpreadsheetRejectedRow(row.Index, "Account is locked", "email"));
+                rejected.Add(new SpreadsheetRejectedRow(row.Index, "Account is locked", "Email"));
             }
         }
         await Task.Delay(1); // call your API here
         return rejected;
-    },
-};
+    };
+});
 
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<Subscriber>(schema);
 importer.LoadText("Email\nada@example.com\nbob@example.com", "users.csv");
 
 await importer.SubmitAsync();
@@ -294,20 +296,25 @@ Editing a cell of a refused row clears its rejection, which removes the row from
 The importer records each batch as soon as your callback answers: the rows it did not refuse become `AcceptedRowIndexes`. If a later batch throws, `SubmitStatus` is `Error`, `SubmitError` holds the message, and calling `SubmitAsync` again sends only `PendingRows` (the importable rows not accepted yet), so a retry never sends an accepted batch twice:
 
 ```csharp
-var apiDown = true;
-var schema = new SpreadsheetSchema
+public sealed class NameRow
 {
-    BatchSize = 2,
-    Columns = [new SpreadsheetColumnSchema { Key = "name" }],
-    OnSubmitAsync = async (rows, cancellationToken) =>
+    public string? Name { get; set; }
+}
+
+var apiDown = true;
+var schema = SpreadsheetSchema.For<NameRow>(s =>
+{
+    s.BatchSize = 2;
+    s.Column(r => r.Name);
+    s.OnSubmitAsync = async (rows, cancellationToken) =>
     {
         await Task.Delay(1, cancellationToken); // call your API here, passing the token
         if (apiDown && rows[0].Index == 4) throw new HttpRequestException("API unavailable");
         return null;
-    },
-};
+    };
+});
 
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<NameRow>(schema);
 importer.LoadText("Name\nA\nB\nC\nD\nE\nF", "names.csv");
 
 await importer.SubmitAsync();                    // the third batch throws
@@ -328,43 +335,42 @@ Accepted rows are final. They show as Imported in the component, and `EditCell`,
 
 Goal: validate rows with data only your server has, without loading it all in memory.
 
-Three callbacks accept a `CancellationToken` and are called in batches. Their synchronous counterparts keep working.
+Three callbacks accept a `CancellationToken` and are called in batches. Their synchronous counterparts keep working. The callbacks receive `SpreadsheetRow<TRow>` rows (`LookupExistingRecordsAsync` receives the key texts and returns your `TRow` records by key), so you read `r.Value.Supplier` instead of looking a key up in a dictionary.
 
 ```csharp
-// catalog, suppliers and categories stand for your own services.
-var schema = new SpreadsheetSchema
+public sealed class CatalogLine
 {
-    RowKeyField = "sku",
-    ExistingAction = SpreadsheetExistingAction.Update,
+    public string? Sku { get; set; }
+    public string? Supplier { get; set; }
+    public string? Category { get; set; }
+}
+
+// catalog, suppliers and categories stand for your own services.
+var schema = SpreadsheetSchema.For<CatalogLine>(s =>
+{
+    s.RowKey(s.Column(r => r.Sku, c => c.Required()));
+    s.ExistingAction = SpreadsheetExistingAction.Update;
     // Which of these SKUs exist already? Return the ones you found, by key.
-    LookupExistingRecordsAsync = async (keys, cancellationToken) =>
+    s.LookupExistingRecordsAsync = async (keys, cancellationToken) =>
     {
-        var found = await catalog.FindAsync(keys, cancellationToken);                 // your API
-        return found.ToDictionary(p => p.Sku, p => (IReadOnlyDictionary<string, object?>)p.ToDictionary());
-    },
+        IReadOnlyList<CatalogLine> found = await catalog.FindAsync(keys, cancellationToken);   // your API
+        return found.ToDictionary(p => p.Sku!);
+    };
     // Is the supplier known? Return the issues, each with the index of its row.
-    ValidateRowsAsync = async (rows, cancellationToken) =>
+    s.ValidateRowsAsync = async (rows, cancellationToken) =>
     {
-        var unknown = await suppliers.UnknownAsync(rows.Select(r => (string)r.Data["supplier"]!), cancellationToken);
-        return rows.Where(r => unknown.Contains((string)r.Data["supplier"]!))
+        var unknown = await suppliers.UnknownAsync(rows.Select(r => r.Value.Supplier!), cancellationToken);
+        return rows.Where(r => unknown.Contains(r.Value.Supplier!))
             .Select(r => new SpreadsheetIndexedIssue(r.Index,
-                new SpreadsheetRowIssue("supplier", "supplier.unknown", SpreadsheetIssueLevel.Error, "Unknown supplier")))
+                new SpreadsheetRowIssue("Supplier", "supplier.unknown", SpreadsheetIssueLevel.Error, "Unknown supplier")))
             .ToList();
-    },
-    Columns =
-    [
-        new SpreadsheetColumnSchema { Key = "sku", Required = true },
-        new SpreadsheetColumnSchema { Key = "supplier", Required = true },
-        new SpreadsheetColumnSchema
-        {
-            Key = "category",
-            Kind = SpreadsheetColumnKind.Select,
-            Options = [new("tools", "Tools")],
-            // Called once per value the user chose to create, with the token of the submit.
-            OnCreateOptionAsync = async (text, cancellationToken) => await categories.CreateAsync(text, cancellationToken),
-        },
-    ],
-};
+    };
+    s.Column(r => r.Supplier, c => c.Required());
+    s.Column(r => r.Category, c => c
+        .Options([new SpreadsheetOption<string?>("tools", "Tools")])
+        // Called once per value the user chose to create, with the token of the submit.
+        .OnCreateOptionAsync(async (text, cancellationToken) => await categories.CreateAsync(text, cancellationToken)));
+});
 ```
 
 **Existing records by key.** `LookupExistingRecordsAsync` receives the distinct key values of the file, `LookupBatchSize` (500) at a time, and returns the records it found by key. Rows whose key it returns get the mode, discard reason or `row.exists` issue that `ExistingAction` defines, exactly as with `ExistingRecords`, and the two can be combined. A returned dictionary keeps its own comparer, so return a case-insensitive one if your keys are.
@@ -379,13 +385,17 @@ var schema = new SpreadsheetSchema
 
 Goal: do not make the same user map the same export every month.
 
+In the samples below, `Member` is a row class with the properties `Name`, `Email`, `Level` and `Note`, and `schema` is its schema.
+
+The profile stores column keys, which are the property names unless you call `Key("...")` on a column, so set a key when you rename a property and stored profiles must keep working.
+
 `GetMappingProfile()` captures the mapping the user finished: each file header that feeds a column, the columns they declared absent, and their answers to unknown values. It holds header texts, column keys and answers, never cell data. Store it with `ToJson()`:
 
 ```csharp
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<Member>(schema);
 importer.LoadText(file, "bank-march.csv");
-importer.AssignColumn("name", 0);                       // the user maps "Full name" to Name
-importer.AnswerValue("level", "Gold", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "pro", "Pro"));
+importer.AssignColumn("Name", 0);                       // the user maps "Full name" to Name
+importer.AnswerValue("Level", "Gold", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "pro", "Pro"));
 await importer.SubmitAsync();
 
 var json = importer.GetMappingProfile().ToJson();       // keep it per user and per schema: a database row, local storage, a file
@@ -395,16 +405,16 @@ var json = importer.GetMappingProfile().ToJson();       // keep it per user and 
 {
   "version": 1,
   "schemaKey": "people",
-  "columns": { "full name": "name", "e-mail address": "email", "plan": "level" },
-  "ignoredColumns": [ "note" ],
-  "valueAnswers": { "level::gold": { "action": "Map", "mappedValue": "pro", "mappedLabel": "Pro" } }
+  "columns": { "full name": "Name", "e-mail address": "Email", "plan": "Level" },
+  "ignoredColumns": [ "Note" ],
+  "valueAnswers": { "Level::gold": { "action": "Map", "mappedValue": "pro", "mappedLabel": "Pro" } }
 }
 ```
 
 Next time, give the stored profile to `SavedMapping` before loading the file:
 
 ```csharp
-var next = new SpreadsheetImporter(schema) { SavedMapping = SpreadsheetMappingProfile.FromJson(json) };
+var next = new SpreadsheetImporter<Member>(schema) { SavedMapping = SpreadsheetMappingProfile.FromJson(json) };
 next.LoadText(nextFile, "bank-april.csv");
 Console.WriteLine(next.SavedMappingApplied);            // true: the columns are mapped, the "Gold" question is answered
 ```
@@ -448,7 +458,7 @@ builder.Services.AddKlyrooSpreadsheet(s => s
 
 A change to `"fr"` also applies to `fr-CA` and the other locales that resolve to it, and a locale you add (`KlyLocales.Extend(KlyLocales.En, code: "en-AU", ...)`) starts from the set its code resolves to. The texts become read-only once a component has resolved one, so change them before the app renders. `SpreadsheetTexts` documents every text; build a variant with a `with` expression.
 
-**Issue messages are resolved by code.** The importer raises issues with an English `Message` and, for the messages the library writes, the values in `Args`. The component shows `texts.ResolveIssue(issue)`: the message of the locale for codes such as `required`, `number`, `boolean`, `date`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `pattern`, and for the default messages of `SpreadsheetRule.Email`, `Pattern`, `Min`, `Max` and `Between`. A message you wrote is never replaced: a rule built with your own `message`, the issues of `ValidateRow` and `ValidateRowsAsync`, a `CustomParse` exception and a server rejection have no `Args` and show as they are. In your own UI, call the same method:
+**Issue messages are resolved by code.** The importer raises issues with an English `Message` and, for the messages the library writes, the values in `Args`. The component shows `texts.ResolveIssue(issue)`: the message of the locale for codes such as `required`, `number`, `boolean`, `date`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `pattern`, and for the default messages of `SpreadsheetRule.Email`, `Pattern`, `Min`, `Max` and `Between`. A message you wrote is never replaced: a rule built with your own `message`, the issues of `ValidateRow` and `ValidateRowsAsync`, a `Parser` failure and a server rejection have no `Args` and show as they are. In your own UI, call the same method:
 
 ```csharp
 var texts = SpreadsheetLocales.Tables["fr"];
@@ -511,7 +521,7 @@ The importer reads the file once, then updates only the rows a change concerns. 
 The review is paged. Build your own table on `ReviewPageRows` and move with `SetReviewPage` and `SetReviewPageSize`:
 
 ```csharp
-var importer = new SpreadsheetImporter(schema);
+var importer = new SpreadsheetImporter<Product>(schema);
 importer.LoadText(csv, "big.csv");
 
 importer.SetReviewPageSize(100);
@@ -575,22 +585,19 @@ using Xunit;
 
 namespace MyApp.Tests;
 
+public sealed class PriceRow
+{
+    public string? Sku { get; set; }
+    public double Price { get; set; }
+}
+
 public sealed class PriceImportTests
 {
-    private static SpreadsheetImporter CreateImporter() => new(new SpreadsheetSchema
+    private static SpreadsheetImporter<PriceRow> CreateImporter() => new(SpreadsheetSchema.For<PriceRow>(s =>
     {
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
-            new SpreadsheetColumnSchema
-            {
-                Key = "price",
-                Kind = SpreadsheetColumnKind.Number,
-                Required = true,
-                Rules = [SpreadsheetRule.Min(0)],
-            },
-        ],
-    });
+        s.Column(r => r.Sku, c => c.Label("SKU").Required());
+        s.Column(r => r.Price, c => c.Rule(SpreadsheetRule.Min(0d)));
+    }));
 
     [Fact]
     public void Negative_prices_block_the_row()
@@ -601,7 +608,7 @@ public sealed class PriceImportTests
 
         Assert.Single(importer.ImportableRows);
         var invalid = Assert.Single(importer.InvalidRows);
-        Assert.Contains(invalid.Issues, i => i.Field == "price" && i.Code == "min");
+        Assert.Contains(invalid.Issues, i => i.Field == "Price" && i.Code == "min");
     }
 
     [Fact]
@@ -614,7 +621,7 @@ public sealed class PriceImportTests
         Assert.False(importer.CanSubmit);
         Assert.Equal("Amount", importer.MissingFields[0].Suggestion?.HeaderText);
 
-        importer.AssignColumn("price", importer.MissingFields[0].Suggestion!.HeaderIndex);
+        importer.AssignColumn("Price", importer.MissingFields[0].Suggestion!.HeaderIndex);
 
         Assert.True(importer.CanSubmit);
     }
@@ -630,10 +637,8 @@ public sealed class PriceImportComponentTests : BunitContext
     [Fact]
     public void Continue_moves_from_the_file_step_to_review_when_nothing_needs_mapping()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
-        {
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Required = true }],
-        });
+        var importer = new SpreadsheetImporter<PriceRow>(SpreadsheetSchema.For<PriceRow>(s =>
+            s.Column(r => r.Sku, c => c.Required())));
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         importer.LoadText("SKU\nA-1", "prices.csv");

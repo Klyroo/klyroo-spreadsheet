@@ -4,9 +4,28 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Static classes and extensions (2) · Classes (4) · Records (17) · Enums (14)
+Static classes and extensions (3) · Classes (10) · Records (20) · Structs (1) · Enums (14) · Delegates (1)
 
 ### Static classes and extensions
+
+#### `SpreadsheetColumnBuilderExtensions`
+
+`Klyroo.Spreadsheet` · service
+
+Settings that exist only for some column value types.
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateOnly> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateOnly>` | Sets the exact formats a `DateOnly` column reads, instead of the defaults. |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateOnly?> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateOnly?>` | Sets the exact formats a nullable `DateOnly` column reads, instead of the defaults. |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateTime> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateTime>` | Sets the exact formats a `DateTime` column reads, instead of the defaults. |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateTime?> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateTime?>` | Sets the exact formats a nullable `DateTime` column reads, instead of the defaults. |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateTimeOffset> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateTimeOffset>` | Sets the exact formats a `DateTimeOffset` column reads, instead of the defaults. Cells carry no offset: they are read as UTC. |
+| `static DateFormats<TRow>(SpreadsheetColumnBuilder<TRow, DateTimeOffset?> builder, params string[] formats)` | `SpreadsheetColumnBuilder<TRow, DateTimeOffset?>` | Sets the exact formats a nullable `DateTimeOffset` column reads, instead of the defaults. Cells carry no offset: they are read as UTC. |
+| `static DecimalSeparator<TRow, TValue>(SpreadsheetColumnBuilder<TRow, TValue> builder, char separator)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets the decimal mark of a number column, `.` or `,`. The other character is accepted as a thousands separator only between groups of three digits. |
+| `static DecimalSeparator<TRow, TValue>(SpreadsheetColumnBuilder<TRow, TValue?> builder, char separator)` | `SpreadsheetColumnBuilder<TRow, TValue?>` | Sets the decimal mark of a nullable number column, `.` or `,`. |
+| `static Options<TRow, TValue>(SpreadsheetColumnBuilder<TRow, TValue?> builder, IEnumerable<SpreadsheetOption<TValue>> options)` | `SpreadsheetColumnBuilder<TRow, TValue?>` | Makes a nullable column a select with these allowed values. |
+| `static Rule<TRow, TValue>(SpreadsheetColumnBuilder<TRow, TValue?> builder, SpreadsheetRule<TValue> rule)` | `SpreadsheetColumnBuilder<TRow, TValue?>` | Adds a rule to a nullable column. The rule is typed like the underlying value because it only runs on a cell that holds one. |
 
 #### `SpreadsheetXlsReader`
 
@@ -38,49 +57,81 @@ Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `Spreadsh
 
 ### Classes
 
+#### `SpreadsheetColumn<TRow>`
+
+`Klyroo.Spreadsheet` · class · inherits `SpreadsheetColumnSchema`
+
+A column of a row type, with the value type erased. It is the type the schema stores.
+
+#### `SpreadsheetColumn<TRow, TValue>`
+
+`Klyroo.Spreadsheet` · class · inherits `SpreadsheetColumn<TRow>`
+
+A column bound to one property of a row type. The kind of cell it reads follows `TValue`.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `DefaultValue` | `TValue` | The value used for empty cells when `SpreadsheetColumnSchema.HasDefault` is `true`. |
+
+#### `SpreadsheetColumnBuilder<TRow, TValue>`
+
+`Klyroo.Spreadsheet` · class
+
+Configures one column. Methods return the builder so calls chain: `c => c.Required().Headers("mail")`. Settings that only make sense for some value types are extension methods on this type, so they do not compile on the others.
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `Default(TValue value)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets the value used for empty cells. A column with a default is never missing. For a nullable column the default may itself be `null`. |
+| `Description(string description)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets help text shown under the column name. |
+| `Editable(bool editable)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets whether the component lets the user edit this column's cells in the review table. |
+| `Example(string example)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets the sample value written in the second row of the CSV template. |
+| `From(SpreadsheetColumnSchema source)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Makes the column reuse the cell text of an earlier column instead of reading its own file column. Such a column never matches a header and is left out of the template. |
+| `Group(string group)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets the grouping label the component uses in the column mapping. |
+| `Headers(params string[] headers)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Adds header spellings that match this column, on top of the key and the label. |
+| `Key(string key)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Overrides the key, which is the property name by default. The key is what a saved mapping profile stores, so set it to keep a profile valid when you rename the property. |
+| `Label(string label)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets the display name, also matched against file headers. |
+| `OnCreateOption(Func<string, SpreadsheetOption<TValue>> create)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Called once per distinct value answered with `SpreadsheetValueAnswerAction.Create`, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option's value and later sends do not call it again for that value. Setting it makes the component offer a create choice. |
+| `OnCreateOptionAsync(Func<string, CancellationToken, Task<SpreadsheetOption<TValue>>> create)` | `SpreadsheetColumnBuilder<TRow, TValue>` | The asynchronous form of `SpreadsheetColumnBuilder.OnCreateOption`, for a callback that calls a server. It receives the cancellation token of the submit. When both are set, this one is used. |
+| `Options(IEnumerable<SpreadsheetOption<TValue>> options)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Makes the column a select with these allowed values. Cells that match none become value questions governed by `SpreadsheetColumnBuilder.UnknownPolicy`. |
+| `Parser(SpreadsheetParser<TValue> parser)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Replaces the built-in parsing of a non-select column with your own. |
+| `Required(bool required = true)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Makes an empty cell a blocking issue and a missing file column a blocker, unless the column has a default. |
+| `Rule(SpreadsheetRule<TValue> rule)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Adds a validation rule, run on every non-empty parsed value in the order the rules were added. |
+| `Rule(string code, string message, Func<TValue, bool> validate, SpreadsheetIssueLevel level = Error)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Adds a validation rule written as a predicate. |
+| `UnknownPolicy(SpreadsheetUnknownValuePolicy policy)` | `SpreadsheetColumnBuilder<TRow, TValue>` | Sets what happens to select cells that match no option. |
+
 #### `SpreadsheetColumnSchema`
 
 `Klyroo.Spreadsheet` · class
 
-Declares one field of the imported data: how to find it in the file, how to parse it and how to validate it.
-
-| Constructor | Description |
-| :--- | :--- |
-| `SpreadsheetColumnSchema()` | Creates a column definition. Set `SpreadsheetColumnSchema.Key` in the object initializer. |
+Declares one field of the imported data: how to find it in the file, how to parse it and how to validate it. Create columns with `SpreadsheetSchemaBuilder.Column``.
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `CustomParse` (init) | `Func<string, object?>?` | Replaces the built-in parsing of non-select columns. It receives the cell text and returns the value. An exception marks the cell as an error with the exception message. |
-| `DateFormats` (init) | `IReadOnlyList<string>?` | Exact `DateTime` format strings accepted for `SpreadsheetColumnKind.Date` cells. When empty, the defaults are `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`. |
-| `DecimalSeparator` (init) | `char` | The decimal mark of `SpreadsheetColumnKind.Number` cells, `.` or `,`. The other character is accepted as a thousands separator only between groups of three digits, so `12,50` is rejected when the mark is `.`. |
-| `DefaultValue` (init) | `object?` | The value used for empty cells. It only applies when `SpreadsheetColumnSchema.HasDefault` is `true`. |
-| `Description` (init) | `string?` | Help text for your own UI. The importer and the built-in component do not read it. |
-| `Editable` (init) | `bool` | Whether the built-in component lets the user edit this column's cells in the review table. `SpreadsheetImporter.EditCell` ignores it. |
-| `EffectiveLabel` | `string` | `SpreadsheetColumnSchema.Label` when set, otherwise `SpreadsheetColumnSchema.Key` turned into words, for example `secureCode` becomes `Secure code`. |
-| `Example` (init) | `string?` | A sample value written in the second row of `SpreadsheetImporter.ExportTemplateCsv`. |
-| `From` (init) | `string?` | The `SpreadsheetColumnSchema.Key` of an earlier column whose cell text this column reuses instead of reading its own file column. A column with `SpreadsheetColumnSchema.From` never matches a header and is left out of the template. The source column must come first in `SpreadsheetSchema.Columns`. |
-| `Group` (init) | `string?` | A grouping label for your own UI. The importer and the built-in component do not read it. |
-| `HasDefault` (init) | `bool` | Set to `true` to apply `SpreadsheetColumnSchema.DefaultValue`, which lets the default itself be `null`. A column with a default is never missing. |
-| `Headers` (init) | `IReadOnlyList<string>?` | Additional header spellings that match this column, on top of `SpreadsheetColumnSchema.Key` and `SpreadsheetColumnSchema.EffectiveLabel`. |
-| `Key` (init) | `string` | The field name. It is the key of `SpreadsheetRow.Data` and `SpreadsheetRow.Cells`, and it also matches a file header. |
-| `Kind` (init) | `SpreadsheetColumnKind` | How cells are parsed. Defaults to `SpreadsheetColumnKind.Text`. |
-| `Label` (init) | `string?` | The display name, also matched against file headers. Defaults to `SpreadsheetColumnSchema.EffectiveLabel`. |
-| `OnCreateOption` (init) | `Func<string, SpreadsheetOption>?` | Called once per distinct value answered with `SpreadsheetValueAnswerAction.Create`, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option: its `SpreadsheetOption.Value` in `SpreadsheetRow.Data` and its label in the review, and later sends do not call it again for that value. Setting it also makes the component offer a create choice (`SpreadsheetValueQuestion.CanCreate`). |
-| `OnCreateOptionAsync` (init) | `Func<string, CancellationToken, Task<SpreadsheetOption>>?` | The asynchronous form of `SpreadsheetColumnSchema.OnCreateOption`, for a callback that calls a server. It receives the cancellation token of the submit, so cancelling the submit cancels it. When both are set, this one is used. |
-| `Options` (init) | `IReadOnlyList<SpreadsheetOption>?` | The allowed values of a `SpreadsheetColumnKind.Select` column. |
-| `Required` (init) | `bool` | When `true`, an empty cell is a blocking issue (code `required`) and a file with no matching column cannot be submitted, unless the column has a default. |
-| `Rules` (init) | `IReadOnlyList<SpreadsheetRule>?` | Validation rules run, in order, on every non-empty parsed value. |
-| `UnknownPolicy` (init) | `SpreadsheetUnknownValuePolicy` | What to do with select cells that match no option. Defaults to `SpreadsheetUnknownValuePolicy.Ask`. |
+| `CanCreateOption` | `bool` | Whether the column creates new options: it has an `SpreadsheetColumnBuilder.OnCreateOption` or `SpreadsheetColumnBuilder.OnCreateOptionAsync` callback, so the component offers a create choice (`SpreadsheetValueQuestion.CanCreate`). |
+| `DateFormats` | `IReadOnlyList<string>?` | Exact `DateTime` format strings accepted for `SpreadsheetColumnKind.Date` cells. When empty, the defaults are `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`. |
+| `DecimalSeparator` | `char` | The decimal mark of `SpreadsheetColumnKind.Number` cells, `.` or `,`. The other character is accepted as a thousands separator only between groups of three digits, so `12,50` is rejected when the mark is `.`. |
+| `Description` | `string?` | Help text for your own UI and for the built-in component, which shows it under the column name. |
+| `Editable` | `bool` | Whether the built-in component lets the user edit this column's cells in the review table. `SpreadsheetImporter.EditCell` ignores it. |
+| `EffectiveLabel` | `string` | `SpreadsheetColumnSchema.Label` when set, otherwise `SpreadsheetColumnSchema.Key` turned into words, for example `SecureCode` becomes `Secure code`. |
+| `Example` | `string?` | A sample value written in the second row of `SpreadsheetImporter.ExportTemplateCsv`. |
+| `From` | `string?` | The `SpreadsheetColumnSchema.Key` of an earlier column whose cell text this column reuses instead of reading its own file column. A column with `SpreadsheetColumnSchema.From` never matches a header and is left out of the template. |
+| `Group` | `string?` | A grouping label for the built-in component, which groups the column mapping by it. |
+| `HasDefault` | `bool` | Whether the column has a default for empty cells. A column with a default is never missing. |
+| `Headers` | `IReadOnlyList<string>?` | Additional header spellings that match this column, on top of `SpreadsheetColumnSchema.Key` and `SpreadsheetColumnSchema.EffectiveLabel`. |
+| `Key` | `string` | The field name. It is the key of `SpreadsheetRow.Cells` and it also matches a file header. It defaults to the name of the row property. |
+| `Kind` | `SpreadsheetColumnKind` | How cells are parsed. It follows the value type: text for `String`, number for numeric types, boolean for `Boolean`, date for `DateOnly`, `DateTime` and `DateTimeOffset`, select for enums and for any column with options. |
+| `Label` | `string?` | The display name, also matched against file headers. Defaults to `SpreadsheetColumnSchema.EffectiveLabel`. |
+| `Options` | `IReadOnlyList<SpreadsheetOption>?` | The allowed values of a `SpreadsheetColumnKind.Select` column, as text. For an enum column without explicit options, one per member. |
+| `Required` | `bool` | When `true`, an empty cell is a blocking issue (code `required`) and a file with no matching column cannot be submitted, unless the column has a default. A column whose property type is a non-nullable value type (`Int32`, `Boolean`, an enum) is always required, because an empty cell cannot be stored in it. |
+| `Rules` | `IReadOnlyList<SpreadsheetRule>?` | Validation rules run, in order, on every non-empty parsed value. |
+| `UnknownPolicy` | `SpreadsheetUnknownValuePolicy` | What to do with select cells that match no option. Defaults to `SpreadsheetUnknownValuePolicy.Ask`. |
+| `ValueType` | `Type` | The type of the row property this column fills. |
 
 #### `SpreadsheetImporter`
 
 `Klyroo.Spreadsheet` · class
 
-The headless import engine. It loads delimited text or a prepared workbook, finds the sheet and header row, maps file columns to the columns of a `SpreadsheetSchema`, parses and validates every row, tracks the user's corrections, and sends the importable rows to `SpreadsheetSchema.OnSubmit` in batches.
-
-| Constructor | Description |
-| :--- | :--- |
-| `SpreadsheetImporter(SpreadsheetSchema schema)` | Creates an importer for a schema, with no file loaded. |
+The headless import engine. It loads delimited text or a prepared workbook, finds the sheet and header row, maps file columns to the columns of a `SpreadsheetSchema`, parses and validates every row, tracks the user's corrections, and sends the importable rows to the schema's submit callback in batches.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
@@ -107,7 +158,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `Fields` | `IReadOnlyList<SpreadsheetFieldState>` | The mapping state of every schema column, in schema order. |
 | `FileLoaded` | `bool` | Whether a workbook with at least one sheet is loaded. |
 | `FileName` | `string?` | The name of the loaded file, or `null`. |
-| `HasAsyncChecks` | `bool` | `true` when the schema defines `SpreadsheetSchema.LookupExistingRecordsAsync` or `SpreadsheetSchema.ValidateRowsAsync`. |
+| `HasAsyncChecks` | `bool` | `true` when the schema defines `LookupExistingRecordsAsync` or `ValidateRowsAsync`. |
 | `HeaderRowIndex` | `int` | The index, within `SpreadsheetSheet.Rows`, of the row used as header. |
 | `HeaderRowNumber` | `int` | The file row number of the header row, for messages to the user. 1 when no file is loaded. |
 | `Headers` | `IReadOnlyList<string>` | The cell text of the header row. |
@@ -191,9 +242,28 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `SetReviewSearch(string search)` | `void` | Filters the review rows to those with a cell containing the text, ignoring case. |
 | `SetReviewTab(SpreadsheetReviewTab tab)` | `void` | Selects the review subset and clears the selection. Choosing Importable or Discarded also resets the severity filter. |
 | `SetSheet(string sheetName)` | `void` | Switches to another sheet of the loaded file, re-detects its header row and clears column choices and discards. Does nothing for an unknown name. |
-| `SubmitAsync(CancellationToken cancellationToken = null)` | `Task` | Sends every importable row that was not accepted yet to `SpreadsheetSchema.OnSubmitAsync` (or `SpreadsheetSchema.OnSubmit`) in batches of `SpreadsheetSchema.BatchSize`. It first calls `SpreadsheetColumnSchema.OnCreateOptionAsync` or `SpreadsheetColumnSchema.OnCreateOption` once for each value answered with Create, then runs the async checks of `SpreadsheetImporter.ValidateAsync` when `SpreadsheetImporter.NeedsAsyncValidation` (rows the checks flag with an error are left out of the send and shown as invalid). Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice. An exception from a callback is caught and reported in `SpreadsheetImporter.SubmitError`; a cancellation ends in `SpreadsheetSubmitStatus.Cancelled`. Does nothing while a submit is running or when `SpreadsheetImporter.CanSubmit` is `false`. |
+| `SubmitAsync(CancellationToken cancellationToken = null)` | `Task` | Sends every importable row that was not accepted yet to the schema's submit callback in batches of `SpreadsheetSchema.BatchSize`. It first calls the column's create-option callback once for each value answered with Create, then runs the async checks of `SpreadsheetImporter.ValidateAsync` when `SpreadsheetImporter.NeedsAsyncValidation` (rows the checks flag with an error are left out of the send and shown as invalid). Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice. An exception from a callback is caught and reported in `SpreadsheetImporter.SubmitError`; a cancellation ends in `SpreadsheetSubmitStatus.Cancelled`. Does nothing while a submit is running or when `SpreadsheetImporter.CanSubmit` is `false`. |
 | `ToggleRowSelection(int rowIndex, bool selected)` | `void` | Adds a row to or removes it from the selection. |
-| `ValidateAsync(CancellationToken cancellationToken = null)` | `Task` | Runs the async checks the schema defines, on the rows that were not checked yet: first the existing-records lookup for the row keys that were not looked up (`SpreadsheetSchema.LookupExistingRecordsAsync`, which sets each row's `SpreadsheetRow.Mode` and applies `SpreadsheetSchema.ExistingAction`), then the batched validation of the rows that are not discarded and have no error (`SpreadsheetSchema.ValidateRowsAsync`). Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap. An exception is caught and reported in `SpreadsheetImporter.ValidationError`; the results of the batches that finished are kept. |
+| `ValidateAsync(CancellationToken cancellationToken = null)` | `Task` | Runs the async checks the schema defines, on the rows that were not checked yet: first the existing-records lookup for the row keys that were not looked up (`LookupExistingRecordsAsync`, which sets each row's `SpreadsheetRow.Mode` and applies `SpreadsheetSchema.ExistingAction`), then the batched validation of the rows that are not discarded and have no error (`ValidateRowsAsync`). Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap. An exception is caught and reported in `SpreadsheetImporter.ValidationError`; the results of the batches that finished are kept. |
+
+#### `SpreadsheetImporter<TRow>`
+
+`Klyroo.Spreadsheet` · class · inherits `SpreadsheetImporter`
+
+The headless import engine for a row type. It is a `SpreadsheetImporter` whose schema is typed, so the schema callbacks receive `TRow` instances, and which can hand you the rows it holds as `SpreadsheetRow`.
+
+| Constructor | Description |
+| :--- | :--- |
+| `SpreadsheetImporter<TRow>(SpreadsheetSchema<TRow> schema)` | Creates an importer for a schema, with no file loaded. |
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `ImportableTypedRows` | `IReadOnlyList<SpreadsheetRow<TRow>>` | The rows that would be sent on submit, typed. It builds one `TRow` per row on each call. |
+| `Schema` | `SpreadsheetSchema<TRow>` | The schema this importer was created with. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `ToTyped(SpreadsheetRow row)` | `SpreadsheetRow<TRow>` | Gives a row of this importer the typed form: the same row with its parsed values as a `TRow`. |
 
 #### `SpreadsheetMappingProfileJsonContext`
 
@@ -217,33 +287,74 @@ The source-generated JSON context of `SpreadsheetMappingProfileJsonContext.Sprea
 
 `Klyroo.Spreadsheet` · class
 
-Describes an import: its columns and the policies for limits, duplicates, existing records and submission. Pass it to `SpreadsheetImporter`.
-
-| Constructor | Description |
-| :--- | :--- |
-| `SpreadsheetSchema()` | Creates a schema with no columns and the default policies. |
+Describes an import: its columns and the policies for limits, duplicates, existing records and submission. Create one with `SpreadsheetSchema.For`` and pass it to `SpreadsheetImporter`.
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `Accept` (init) | `IReadOnlyList<string>` | The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing, and `SpreadsheetImporter.LoadFileAsync` reads `.xlsx` and `.xls` workbooks and delimited text whatever this list says. |
-| `BatchSize` (init) | `int` | The number of rows passed to `SpreadsheetSchema.OnSubmit` per call. Zero or less sends all rows in one call. |
-| `Columns` (init) | `IReadOnlyList<SpreadsheetColumnSchema>` | The columns to import, in display order. A column with `SpreadsheetColumnSchema.From` must come after its source. |
-| `Duplicates` (init) | `SpreadsheetDuplicatesPolicy` | How rows that repeat a key within the file are handled. Keys are compared trimmed and case-insensitively. Needs `SpreadsheetSchema.RowKeyField`. |
-| `ExistingAction` (init) | `SpreadsheetExistingAction` | What to do with rows whose key is in `SpreadsheetSchema.ExistingRecords`. |
-| `ExistingRecords` (init) | `IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>?` | Records that already exist, keyed by the row key value. A row matches when its key text equals a dictionary key under the dictionary's own comparer, with no trimming or case folding applied to the row, so build the dictionary with `StringComparer.OrdinalIgnoreCase` for case-insensitive keys. Needs `SpreadsheetSchema.RowKeyField`. |
-| `ForcedHeaderRow` (init) | `int?` | The 1-based file row number of the header row, which skips header detection. A number that matches no row selects the first row. |
-| `ForcedSheet` (init) | `string?` | The name of the sheet to read, which skips sheet detection. `null`, empty or `auto` detects the sheet; an unknown name falls back to the first sheet. |
-| `Key` (init) | `string` | A name for the import for your own use. The importer does not read it. |
-| `LookupBatchSize` (init) | `int` | The number of keys passed to `SpreadsheetSchema.LookupExistingRecordsAsync` per call. Zero or less sends all keys in one call. Defaults to 500. |
-| `LookupExistingRecordsAsync` (init) | `Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>>?` | Looks up existing records by key on demand, instead of loading them all into `SpreadsheetSchema.ExistingRecords`. It receives the distinct row key values of the file, `SpreadsheetSchema.LookupBatchSize` at a time, and returns the records found by key (keys it does not return are new). A row matches when its key text equals a returned key under the dictionary's own comparer, like `SpreadsheetSchema.ExistingRecords`. Needs `SpreadsheetSchema.RowKeyField`. See `SpreadsheetImporter.ValidateAsync` for when it runs. |
-| `MaxRows` (init) | `int?` | The maximum number of data rows to import. Later rows are left out with `SpreadsheetDiscardReason.Limit`. No limit when `null`. |
-| `OnSubmit` (init) | `Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | Receives each batch of importable rows and returns the rows the server refused, or `null` or an empty list when all were accepted. If it throws, the submit stops with `SpreadsheetSubmitStatus.Error`. |
-| `OnSubmitAsync` (init) | `Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | The cancellable form of `SpreadsheetSchema.OnSubmit`: it also receives a `CancellationToken` that is cancelled by `SpreadsheetImporter.CancelSubmit` (the Cancel button of the component) or by the token passed to `SpreadsheetImporter.SubmitAsync`. A batch that throws `OperationCanceledException` counts as not accepted, so make the call safe to repeat. When both are set, this one is used. |
-| `RowKeyField` (init) | `string?` | The `SpreadsheetColumnSchema.Key` of the column that identifies a row. It enables the duplicate and existing-record checks. |
-| `RuleTimeoutLimit` (init) | `int` | How many match timeouts one rule may cause in a file before the importer stops evaluating it (a circuit breaker, so a hostile file cannot cost one `SpreadsheetRule.DefaultPatternTimeout` per cell). The rule is then listed once in `SpreadsheetImporter.DisabledRules` and the component shows a notice. Defaults to 3. Zero or less never stops a rule. |
-| `ValidateBatchSize` (init) | `int` | The number of rows passed to `SpreadsheetSchema.ValidateRowsAsync` per call. Zero or less sends all rows in one call. Defaults to 500. |
-| `ValidateRow` (init) | `Func<IReadOnlyDictionary<string, object?>, IReadOnlyList<SpreadsheetRowIssue>>?` | A cross-field check run on every row after the column rules. It receives the parsed values by column key and returns extra issues, which are added to the row. |
-| `ValidateRowsAsync` (init) | `Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>?` | A batched check that needs the host, for example "do these SKUs exist". It receives rows that are not discarded and have no error, `SpreadsheetSchema.ValidateBatchSize` at a time, and returns the issues it found with the index of their row, or `null` or an empty list for none. See `SpreadsheetImporter.ValidateAsync` for when it runs. |
+| `Accept` | `IReadOnlyList<string>` | The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing, and `SpreadsheetImporter.LoadFileAsync` reads `.xlsx` and `.xls` workbooks and delimited text whatever this list says. |
+| `BatchSize` | `int` | The number of rows passed to the submit callback per call. Zero or less sends all rows in one call. |
+| `Columns` | `IReadOnlyList<SpreadsheetColumnSchema>` | The columns to import, in display order. A column with `SpreadsheetColumnSchema.From` comes after its source. |
+| `Duplicates` | `SpreadsheetDuplicatesPolicy` | How rows that repeat a key within the file are handled. Keys are compared trimmed and case-insensitively. Needs `SpreadsheetSchema.RowKeyField`. |
+| `ExistingAction` | `SpreadsheetExistingAction` | What to do with rows whose key is in the existing records. |
+| `ForcedHeaderRow` | `int?` | The 1-based file row number of the header row, which skips header detection. A number that matches no row selects the first row. |
+| `ForcedSheet` | `string?` | The name of the sheet to read, which skips sheet detection. `null`, empty or `auto` detects the sheet; an unknown name falls back to the first sheet. |
+| `Key` | `string` | A name for the import. The component uses it to name the downloads and a saved mapping profile is tied to it. |
+| `LookupBatchSize` | `int` | The number of keys passed to the existing-record lookup per call. Zero or less sends all keys in one call. |
+| `MaxRows` | `int?` | The maximum number of data rows to import. Later rows are left out with `SpreadsheetDiscardReason.Limit`. No limit when `null`. |
+| `RowKeyField` | `string?` | The `SpreadsheetColumnSchema.Key` of the column that identifies a row. It enables the duplicate and existing-record checks. |
+| `RuleTimeoutLimit` | `int` | How many match timeouts one rule may cause in a file before the importer stops evaluating it (a circuit breaker, so a hostile file cannot cost one `SpreadsheetRule.DefaultPatternTimeout` per cell). The rule is then listed once in `SpreadsheetImporter.DisabledRules` and the component shows a notice. Zero or less never stops a rule. |
+| `ValidateBatchSize` | `int` | The number of rows passed to the batched row check per call. Zero or less sends all rows in one call. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static For<TRow>(Action<SpreadsheetSchemaBuilder<TRow>> configure)` | `SpreadsheetSchema<TRow>` | Creates a schema for a row type. Declare each column with `SpreadsheetSchemaBuilder.Column``. |
+| `static For<TRow>(Func<TRow> factory, Action<SpreadsheetSchemaBuilder<TRow>> configure)` | `SpreadsheetSchema<TRow>` | Creates a schema for a row type that has no public parameterless constructor, for example a type with `required` members. |
+
+#### `SpreadsheetSchema<TRow>`
+
+`Klyroo.Spreadsheet` · class · inherits `SpreadsheetSchema`
+
+A schema bound to a row type: the columns map to its properties, and the callbacks receive its rows.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `ExistingRecords` | `IReadOnlyDictionary<string, TRow>?` | Records that already exist, keyed by the row key text. A row matches when its key text equals a dictionary key under the dictionary's own comparer, with no trimming or case folding applied to the row, so build the dictionary with `StringComparer.OrdinalIgnoreCase` for case-insensitive keys. Needs a row key. |
+| `LookupExistingRecordsAsync` | `Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, TRow>>>?` | Looks up existing records by key on demand, instead of loading them all into `SpreadsheetSchema.ExistingRecords`. It receives the distinct row key texts of the file, `SpreadsheetSchema.LookupBatchSize` at a time, and returns the records found by key (keys it does not return are new). A row matches when its key text equals a returned key under the dictionary's own comparer, like `SpreadsheetSchema.ExistingRecords`. Needs a row key. See `SpreadsheetImporter.ValidateAsync` for when it runs. |
+| `OnSubmit` | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | Receives each batch of importable rows and returns the rows the server refused, or `null` or an empty list when all were accepted. If it throws, the submit stops with `SpreadsheetSubmitStatus.Error`. |
+| `OnSubmitAsync` | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | The cancellable form of `SpreadsheetSchema.OnSubmit`: it also receives a `CancellationToken` that is cancelled by `SpreadsheetImporter.CancelSubmit` (the Cancel button of the component) or by the token passed to `SpreadsheetImporter.SubmitAsync`. A batch that throws `OperationCanceledException` counts as not accepted, so make the call safe to repeat. When both are set, this one is used. |
+| `ValidateRow` | `Func<TRow, IReadOnlyList<SpreadsheetRowIssue>>?` | A cross-field check run on every row after the column rules. It receives the parsed row (a cell that is empty or could not be read leaves its property at the default) and returns extra issues, which are added to the row. |
+| `ValidateRowsAsync` | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>?` | A batched check that needs the host, for example "do these SKUs exist". It receives rows that are not discarded and have no error, `SpreadsheetSchema.ValidateBatchSize` at a time, and returns the issues it found with the index of their row, or `null` or an empty list for none. See `SpreadsheetImporter.ValidateAsync` for when it runs. |
+
+#### `SpreadsheetSchemaBuilder<TRow>`
+
+`Klyroo.Spreadsheet` · class
+
+Declares the columns and policies of a `SpreadsheetSchema`. Columns are declared in display order.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `Accept` (get, set) | `IReadOnlyList<string>` | The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing. |
+| `BatchSize` (get, set) | `int` | The number of rows passed to `SpreadsheetSchemaBuilder.OnSubmit` per call. Zero or less sends all rows in one call. |
+| `Duplicates` (get, set) | `SpreadsheetDuplicatesPolicy` | How rows that repeat a key within the file are handled. Needs `SpreadsheetSchemaBuilder.RowKey`. Defaults to `SpreadsheetDuplicatesPolicy.Error`. |
+| `ExistingAction` (get, set) | `SpreadsheetExistingAction` | What to do with rows whose key is in `SpreadsheetSchemaBuilder.ExistingRecords`. Defaults to `SpreadsheetExistingAction.Update`. |
+| `ExistingRecords` (get, set) | `IReadOnlyDictionary<string, TRow>?` | Records that already exist, keyed by the row key text. Needs `SpreadsheetSchemaBuilder.RowKey`. See `SpreadsheetSchema.ExistingRecords`. |
+| `ForcedHeaderRow` (get, set) | `int?` | The 1-based file row number of the header row, which skips header detection. |
+| `ForcedSheet` (get, set) | `string?` | The name of the sheet to read, which skips sheet detection. |
+| `Key` (get, set) | `string` | A name for the import. The component uses it to name the downloads and a saved mapping profile is tied to it. Defaults to `import`. |
+| `LookupBatchSize` (get, set) | `int` | The number of keys passed to `SpreadsheetSchemaBuilder.LookupExistingRecordsAsync` per call. Zero or less sends all keys in one call. Defaults to 500. |
+| `LookupExistingRecordsAsync` (get, set) | `Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, TRow>>>?` | Looks up existing records by key on demand. See `SpreadsheetSchema.LookupExistingRecordsAsync`. |
+| `MaxRows` (get, set) | `int?` | The maximum number of data rows to import. Later rows are left out with `SpreadsheetDiscardReason.Limit`. No limit when `null`. |
+| `OnSubmit` (get, set) | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | Receives each batch of importable rows. See `SpreadsheetSchema.OnSubmit`. |
+| `OnSubmitAsync` (get, set) | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | The cancellable form of `SpreadsheetSchemaBuilder.OnSubmit`. See `SpreadsheetSchema.OnSubmitAsync`. |
+| `RuleTimeoutLimit` (get, set) | `int` | How many match timeouts one rule may cause in a file before the importer stops evaluating it. Defaults to 3. Zero or less never stops a rule. |
+| `ValidateBatchSize` (get, set) | `int` | The number of rows passed to `SpreadsheetSchemaBuilder.ValidateRowsAsync` per call. Zero or less sends all rows in one call. Defaults to 500. |
+| `ValidateRow` (get, set) | `Func<TRow, IReadOnlyList<SpreadsheetRowIssue>>?` | A cross-field check run on every row after the column rules. See `SpreadsheetSchema.ValidateRow`. |
+| `ValidateRowsAsync` (get, set) | `Func<IReadOnlyList<SpreadsheetRow<TRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>?` | A batched check that needs the host. See `SpreadsheetSchema.ValidateRowsAsync`. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `Column<TValue>(Expression<Func<TRow, TValue>> member, Action<SpreadsheetColumnBuilder<TRow, TValue>>? configure = null)` | `SpreadsheetColumn<TRow, TValue>` | Declares a column bound to a property of the row. Its kind follows the property type: text for `String`, number for numeric types, boolean for `Boolean`, date for `DateOnly`, `DateTime` and `DateTimeOffset`, select for an enum. A nullable type reads the same way and stores `null` for an empty cell. Other types need `SpreadsheetColumnBuilder.Parser`. |
+| `RowKey(SpreadsheetColumnSchema column)` | `void` | Sets the column that identifies a row, which enables the duplicate and existing-record checks. |
 
 ### Records
 
@@ -323,11 +434,11 @@ The current mapping of one schema column to the loaded file.
 
 `Klyroo.Spreadsheet` · record
 
-An issue found by `SpreadsheetSchema.ValidateRowsAsync`, with the row it belongs to.
+An issue found by `ValidateRowsAsync`, with the row it belongs to.
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetIndexedIssue(int RowIndex, SpreadsheetRowIssue Issue)` | An issue found by `SpreadsheetSchema.ValidateRowsAsync`, with the row it belongs to. |
+| `SpreadsheetIndexedIssue(int RowIndex, SpreadsheetRowIssue Issue)` | An issue found by `ValidateRowsAsync`, with the row it belongs to. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
@@ -379,27 +490,43 @@ A column mapping and the answers to unknown values, in a form you can store and 
 
 `Klyroo.Spreadsheet` · record
 
-An allowed value of a `SpreadsheetColumnKind.Select` column.
+An allowed value of a `SpreadsheetColumnKind.Select` column, as the importer and the component see it: the value is its text.
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetOption(string Value, string Label, IReadOnlyList<string>? Aliases = null)` | An allowed value of a `SpreadsheetColumnKind.Select` column. |
+| `SpreadsheetOption(string Value, string Label, IReadOnlyList<string>? Aliases = null)` | An allowed value of a `SpreadsheetColumnKind.Select` column, as the importer and the component see it: the value is its text. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `Aliases` (init) | `IReadOnlyList<string>?` | Extra spellings that also match this option, for example a symbol or an abbreviation. |
 | `Label` (init) | `string` | The text shown to the user. Cells are matched against it as well as against the value. |
-| `Value` (init) | `string` | The value stored in `SpreadsheetRow.Data` when this option matches. |
+| `Value` (init) | `string` | The option's value as text (the enum member name for an enum column). It is what a value answer maps to. |
+
+#### `SpreadsheetOption<TValue>`
+
+`Klyroo.Spreadsheet` · record
+
+An allowed value of a select column, typed like the column.
+
+| Constructor | Description |
+| :--- | :--- |
+| `SpreadsheetOption<TValue>(TValue Value, string Label, IReadOnlyList<string>? Aliases = null)` | An allowed value of a select column, typed like the column. |
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `Aliases` (init) | `IReadOnlyList<string>?` | Extra spellings that also match this option, for example a symbol or an abbreviation. |
+| `Label` (init) | `string` | The text shown to the user. Cells are matched against it as well as against the value. |
+| `Value` (init) | `TValue` | The value written to the row property when this option matches. |
 
 #### `SpreadsheetRejectedRow`
 
 `Klyroo.Spreadsheet` · record
 
-A row that `SpreadsheetSchema.OnSubmit` refused. It comes back as an error issue with code `server` on that row.
+A row that `OnSubmit` refused. It comes back as an error issue with code `server` on that row.
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetRejectedRow(int RowIndex, string Message, string? Field = null)` | A row that `SpreadsheetSchema.OnSubmit` refused. It comes back as an error issue with code `server` on that row. |
+| `SpreadsheetRejectedRow(int RowIndex, string Message, string? Field = null)` | A row that `OnSubmit` refused. It comes back as an error issue with code `server` on that row. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
@@ -411,16 +538,15 @@ A row that `SpreadsheetSchema.OnSubmit` refused. It comes back as an error issue
 
 `Klyroo.Spreadsheet` · record
 
-One data row after parsing and validation, as the importer currently sees it.
+One data row after parsing and validation, as the importer currently sees it. The typed form of a row is `SpreadsheetRow`.
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetRow(int Index, int RowNumber, IReadOnlyDictionary<string, object?> Data, IReadOnlyDictionary<string, SpreadsheetCellView> Cells, IReadOnlyList<SpreadsheetRowIssue> Issues, SpreadsheetRowStatus Status, SpreadsheetDiscardReason? DiscardReason, SpreadsheetRowMode Mode, bool Edited, bool Importable)` | One data row after parsing and validation, as the importer currently sees it. |
+| `SpreadsheetRow(int Index, int RowNumber, IReadOnlyDictionary<string, SpreadsheetCellView> Cells, IReadOnlyList<SpreadsheetRowIssue> Issues, SpreadsheetRowStatus Status, SpreadsheetDiscardReason? DiscardReason, SpreadsheetRowMode Mode, bool Edited, bool Importable)` | One data row after parsing and validation, as the importer currently sees it. The typed form of a row is `SpreadsheetRow`. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `Cells` (init) | `IReadOnlyDictionary<string, SpreadsheetCellView>` | The display state of each cell by column key. |
-| `Data` (init) | `IReadOnlyDictionary<string, object?>` | The parsed values by column key: `String` for text, `Double` for numbers, `Boolean` for booleans, an ISO 8601 `String` for dates and the option value for selects. Empty cells are `null`. |
 | `DiscardReason` (init) | `SpreadsheetDiscardReason?` | Why the row is left out, or `null` when it is not. |
 | `Edited` (init) | `bool` | Whether the user edited any cell of the row. |
 | `Importable` (init) | `bool` | Whether the row is sent on submit: not discarded and without an error. |
@@ -429,6 +555,16 @@ One data row after parsing and validation, as the importer currently sees it.
 | `Mode` (init) | `SpreadsheetRowMode` | Whether the row creates a record or updates an existing one. |
 | `RowNumber` (init) | `int` | The 1-based row number in the file, for messages to the user. |
 | `Status` (init) | `SpreadsheetRowStatus` | The overall validation state. |
+
+#### `SpreadsheetRow<TRow>`
+
+`Klyroo.Spreadsheet` · record · inherits `SpreadsheetRow`
+
+A row with the parsed values as an instance of the row type. It is what the schema callbacks receive.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `Value` | `TRow` | The parsed values. A cell that is empty without a default, or that could not be read, leaves its property at the default of its type, so check `SpreadsheetRow.Importable` before trusting a value. The rows the callbacks receive are importable. |
 
 #### `SpreadsheetRowIssue`
 
@@ -442,7 +578,7 @@ A problem or note about a row or one of its cells.
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `Args` (init) | `IReadOnlyList<string>?` | Set for the messages the library writes itself: the values the message contains (the cell text of a `number` issue, the row number of a `row.duplicate` issue), possibly none. With it, the component shows the message of the user's locale for the `Code`, see `SpreadsheetTexts`. `null` for a message you wrote (a rule with your own text, `SpreadsheetSchema.ValidateRow`, a server rejection), which is never replaced. |
+| `Args` (init) | `IReadOnlyList<string>?` | Set for the messages the library writes itself: the values the message contains (the cell text of a `number` issue, the row number of a `row.duplicate` issue), possibly none. With it, the component shows the message of the user's locale for the `Code`, see `SpreadsheetTexts`. `null` for a message you wrote (a rule with your own text, `ValidateRow`, a server rejection), which is never replaced. |
 | `Code` (init) | `string` | A stable identifier. Built-in codes are `required`, `number`, `boolean`, `date`, `text`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists` and `server`, plus the code of each failed `SpreadsheetRule`. |
 | `Field` (init) | `string?` | The column key the issue relates to, or `null` for the whole row. |
 | `Level` (init) | `SpreadsheetIssueLevel` | The severity. |
@@ -452,11 +588,7 @@ A problem or note about a row or one of its cells.
 
 `Klyroo.Spreadsheet` · record
 
-A validation rule attached to a column. A rule runs on the parsed value of a non-empty cell.
-
-| Constructor | Description |
-| :--- | :--- |
-| `SpreadsheetRule(string Code, string Message, Func<object?, bool> Validate, SpreadsheetIssueLevel Level = Error, IReadOnlyList<string>? MessageArgs = null)` | A validation rule attached to a column. A rule runs on the parsed value of a non-empty cell. |
+A validation rule attached to a column. A rule runs on the parsed value of a non-empty cell. Create one with the factory methods of this type or with `SpreadsheetRule`.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
@@ -467,16 +599,29 @@ A validation rule attached to a column. A rule runs on the parsed value of a non
 | `Code` (init) | `string` | A stable identifier copied to `SpreadsheetRowIssue.Code`, usable for filtering. |
 | `Level` (init) | `SpreadsheetIssueLevel` | The severity of the issue. Only `SpreadsheetIssueLevel.Error` blocks the row. |
 | `Message` (init) | `string` | The text of the issue shown to the user when the rule fails. |
-| `MessageArgs` (init) | `IReadOnlyList<string>?` | Set by the built-in rules when `Message` is their default text: the values it contains (the minimum of `SpreadsheetRule.Min`, for example). It is copied to `SpreadsheetRowIssue.Args`, which tells the component to show the message of the user's locale instead of the English default. `null` for a rule with your own message, which is shown as it is. |
-| `Validate` (init) | `Func<object?, bool>` | Receives the parsed value and returns `true` when it is acceptable. |
+| `MessageArgs` (init) | `IReadOnlyList<string>?` | Set by the built-in rules when `Message` is their default text: the values it contains (the minimum of `SpreadsheetRule.Min``, for example). It is copied to `SpreadsheetRowIssue.Args`, which tells the component to show the message of the user's locale instead of the English default. `null` for a rule with your own message, which is shown as it is. |
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
-| `static Between(double min, double max, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule` | Creates a rule that accepts numbers inside an inclusive range. |
-| `static Email(string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule` | Creates a rule that accepts text shaped like an email address (something before and after one `@`, and a dot followed by at least two characters). |
-| `static Max(double max, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule` | Creates a rule that accepts numbers less than or equal to a maximum. |
-| `static Min(double min, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule` | Creates a rule that accepts numbers greater than or equal to a minimum. |
-| `static Pattern(string pattern, string? message = null, SpreadsheetIssueLevel level = Error, TimeSpan? matchTimeout = null)` | `SpreadsheetRule` | Creates a rule that accepts text matching a regular expression. A cell that makes the match run past the timeout (catastrophic backtracking on a hostile value) does not hang the import: it gets a `pattern` issue saying the format could not be checked in time. |
+| `static Between<TValue>(TValue min, TValue max, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule<TValue>` | Creates a rule that accepts numbers inside an inclusive range. |
+| `static Email(string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule<string?>` | Creates a rule that accepts text shaped like an email address (something before and after one `@`, and a dot followed by at least two characters). |
+| `static Max<TValue>(TValue max, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule<TValue>` | Creates a rule that accepts numbers less than or equal to a maximum. |
+| `static Min<TValue>(TValue min, string? message = null, SpreadsheetIssueLevel level = Error)` | `SpreadsheetRule<TValue>` | Creates a rule that accepts numbers greater than or equal to a minimum. |
+| `static Pattern(string pattern, string? message = null, SpreadsheetIssueLevel level = Error, TimeSpan? matchTimeout = null)` | `SpreadsheetRule<string?>` | Creates a rule that accepts text matching a regular expression. A cell that makes the match run past the timeout (catastrophic backtracking on a hostile value) does not hang the import: it gets a `pattern` issue saying the format could not be checked in time. |
+
+#### `SpreadsheetRule<TValue>`
+
+`Klyroo.Spreadsheet` · record · inherits `SpreadsheetRule`
+
+A validation rule on the parsed value of a column.
+
+| Constructor | Description |
+| :--- | :--- |
+| `SpreadsheetRule<TValue>(string Code, string Message, Func<TValue, bool> Validate, SpreadsheetIssueLevel Level = Error, IReadOnlyList<string>? MessageArgs = null)` | A validation rule on the parsed value of a column. |
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `Validate` (init) | `Func<TValue, bool>` | Receives the parsed value and returns `true` when it is acceptable. |
 
 #### `SpreadsheetSheet`
 
@@ -571,6 +716,25 @@ A parsed file made of one or more sheets. Build one yourself to import a format 
 | `Name` (init) | `string` | The file name, shown by the component. |
 | `Sheets` (init) | `IReadOnlyList<SpreadsheetSheet>` | The sheets of the file. |
 
+### Structs
+
+#### `SpreadsheetParseResult<TValue>`
+
+`Klyroo.Spreadsheet` · struct
+
+The outcome of a `SpreadsheetParser`: a value or an error message.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `Error` | `string?` | The message shown on the cell when `SpreadsheetParseResult.IsOk` is `false`. |
+| `IsOk` | `bool` | `true` when the text was read into `SpreadsheetParseResult.Value`. |
+| `Value` | `TValue` | The parsed value, meaningful when `SpreadsheetParseResult.IsOk` is `true`. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static Fail(string message)` | `SpreadsheetParseResult<TValue>` | The text cannot be read. The cell gets an error issue with this message. |
+| `static Ok(TValue value)` | `SpreadsheetParseResult<TValue>` | The text was read as `value`. |
+
 ### Enums
 
 #### `SpreadsheetColumnKind`
@@ -630,7 +794,7 @@ How rows that share the same `SpreadsheetSchema.RowKeyField` value inside one fi
 
 `Klyroo.Spreadsheet` · enum
 
-What happens to an imported row whose key is already present in `SpreadsheetSchema.ExistingRecords`.
+What happens to an imported row whose key is already present in `ExistingRecords`.
 
 | Value | Description |
 | :--- | :--- |
@@ -684,7 +848,7 @@ Whether an importable row creates a record or updates an existing one.
 | Value | Description |
 | :--- | :--- |
 | `Create` | The key is new, or the schema has no key. |
-| `Update` | The key matches an entry of `SpreadsheetSchema.ExistingRecords`. |
+| `Update` | The key matches an entry of `ExistingRecords`. |
 | `Skip` | The key matches an existing record and the schema skips those rows. |
 
 #### `SpreadsheetRowStatus`
@@ -754,6 +918,14 @@ The decision recorded in a `SpreadsheetValueAnswer` for an unknown select value.
 | `LeaveEmpty` | Import the row with an empty cell. |
 | `SkipRows` | Leave out every row that contains the value. |
 | `Create` | Keep the value as a new option. |
+
+### Delegates
+
+#### `SpreadsheetParser<TValue>`
+
+`Klyroo.Spreadsheet` · delegate
+
+Reads the text of a cell into a value. Replaces the built-in parsing of a column, see `SpreadsheetColumnBuilder.Parser`.
 
 ## Klyroo.Spreadsheet
 
@@ -909,12 +1081,12 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `InspectorRow` (init) | `Func<int, string>` | The title of the inspector, given the row number (`"Row 12"`). |
 | `InspectRow` (init) | `Func<int, string>` | The accessible name of the button that opens a row, given the row number (`"Inspect row 12"`). |
 | `Issue` (init) | `string` | The accessible name of the issue filter (`"Issue"`). |
-| `IssueBetween` (init) | `Func<string, string, string>` | The default message of `SpreadsheetRule.Between`, given the minimum and the maximum (`"Value is not between 0 and 100"`). |
+| `IssueBetween` (init) | `Func<string, string, string>` | The default message of `SpreadsheetRule.Between``, given the minimum and the maximum (`"Value is not between 0 and 100"`). |
 | `IssueBoolean` (init) | `Func<string, string>` | The message of the `boolean` issue, given the cell text (`"\"maybe\" is not yes or no"`). |
 | `IssueDate` (init) | `Func<string, string>` | The message of the `date` issue, given the cell text (`"\"31/02/2026\" is not a date this column reads"`). |
 | `IssueEmail` (init) | `string` | The default message of `SpreadsheetRule.Email` (`"Not an email address"`). |
-| `IssueMax` (init) | `Func<string, string>` | The default message of `SpreadsheetRule.Max`, given the maximum (`"Value is above 100"`). |
-| `IssueMin` (init) | `Func<string, string>` | The default message of `SpreadsheetRule.Min`, given the minimum (`"Value is below 0"`). |
+| `IssueMax` (init) | `Func<string, string>` | The default message of `SpreadsheetRule.Max``, given the maximum (`"Value is above 100"`). |
+| `IssueMin` (init) | `Func<string, string>` | The default message of `SpreadsheetRule.Min``, given the minimum (`"Value is below 0"`). |
 | `IssueNumber` (init) | `Func<string, string>` | The message of the `number` issue, given the cell text (`"\"abc\" is not a number"`). |
 | `IssuePattern` (init) | `string` | The default message of `SpreadsheetRule.Pattern` (`"Unexpected format"`). |
 | `IssuePatternTimeout` (init) | `string` | The message of a `pattern` issue raised because the check timed out (`"The format could not be checked in time"`). |

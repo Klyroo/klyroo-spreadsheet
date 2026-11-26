@@ -19,15 +19,15 @@ The importer matches headers exactly after normalization, so look at what differ
 
 **No column suggestion appears for a missing column**
 
-A suggestion needs all of these: the column is required with no default and has no match, it is not a plain text column (set a `Kind`, a `CustomParse` or a rule), the candidate file column is not already used, it has at least two non-empty cells, and at least 80% of its first 30 non-empty cells parse and pass the error-level rules. A file with a single data row never gets a suggestion.
+A suggestion needs all of these: the column is required with no default and has no match, it is not a plain text column (a number, date, yes or no or select property, a `Parser` or a rule), the candidate file column is not already used, it has at least two non-empty cells, and at least 80% of its first 30 non-empty cells parse and pass the error-level rules. A file with a single data row never gets a suggestion.
 
 **Numbers are rejected**
 
-A `Number` column uses one convention. With the default `DecimalSeparator = '.'`, a comma is accepted only as a thousands separator between groups of three digits, so `1,234.50` reads as `1234.5` while `12,50` and `0,125` raise a `number` issue. A value such as `1,500` is still read as `1500`: three digits after the comma look exactly like a thousands group. With `DecimalSeparator = ','` the roles swap: `1.234,50` is accepted and `1,234.50` is rejected. Set the separator that matches your users' files, or use `CustomParse` to normalize the text yourself. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator = ','`. Percent signs and currency symbols are not accepted.
+A `Number` column uses one convention. With the default `DecimalSeparator('.')`, a comma is accepted only as a thousands separator between groups of three digits, so `1,234.50` reads as `1234.5` while `12,50` and `0,125` raise a `number` issue. A value such as `1,500` is still read as `1500`: three digits after the comma look exactly like a thousands group. With `DecimalSeparator(',')` the roles swap: `1.234,50` is accepted and `1,234.50` is rejected. Set the separator that matches your users' files, or use `Parser` to normalize the text yourself. A column for a whole number type (`int`, `long`, ...) also refuses a value with decimals (`1.5`) or one too large for the type, with a message that says so. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator(',')`. Percent signs and currency symbols are not accepted.
 
 **Dates are rejected**
 
-A `Date` column accepts exact formats only: `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`, or the ones you list in `DateFormats` (which replace the defaults). `02/13/2026` and Excel serial numbers fail. The parsed value is an ISO string, not a `DateTime`.
+A date column (a `DateOnly`, `DateTime` or `DateTimeOffset` property) accepts exact formats only: `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`, or the ones you list with `DateFormats` (which replace the defaults). `02/13/2026` and Excel serial numbers fail. The property gets a real date: a `DateOnly` keeps the date part, a `DateTime` has an unspecified kind, and a `DateTimeOffset` reads the cell as UTC, since a cell carries no offset.
 
 **Accented characters come out garbled**
 
@@ -73,8 +73,8 @@ Yes. Everything the component displays comes from the importer's properties (`Fi
 **Does the importer change the uploaded file?**
 No. Edits, discards and mapping choices live in the importer. The result is what `OnSubmit` receives.
 
-**What do I get in `row.Data`?**
-A `string` for text and dates (ISO 8601), a `double` for numbers, a `bool` for booleans, and the `SpreadsheetOption.Value` for selects. Empty cells are `null`. Map the dictionary to your own type in `OnSubmit`.
+**What do I get in `OnSubmit`?**
+A `SpreadsheetRow<TRow>` per row: its `Value` is an instance of your row class with each column property set (a `string`, a number, a `bool`, a date, an enum member), and the cells as text are in `Cells`. An empty cell leaves the property at the default of its type (`null` for a nullable one), which is why a property that cannot hold `null` makes its column required.
 
 **How are CSV separators and quotes handled?**
 The separator is the most frequent of tab, semicolon and comma in the first row outside quotes (comma when none appears, and on a tie tab wins over semicolon, and semicolon over comma). Quoted fields can hold separators, doubled quotes and line breaks. A leading byte order mark is dropped, blank rows are skipped, and cells are trimmed.

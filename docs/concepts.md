@@ -11,9 +11,9 @@ Klyroo.Spreadsheet                 Blazor / .NET MAUI Blazor Hybrid
         |
         v
 Klyroo.Spreadsheet.Core            plain C#, no UI, no package dependencies
-  SpreadsheetSchema                what you expect
-  SpreadsheetImporter              the state machine and the rules
-  SpreadsheetRow, ...Issue, ...    what you read back
+  SpreadsheetSchema<TRow>          what you expect, typed by your row class
+  SpreadsheetImporter<TRow>        the state machine and the rules (base: SpreadsheetImporter)
+  SpreadsheetRow<TRow>, ...Issue   what you read back
 ```
 
 `Klyroo.Spreadsheet.Core` holds every decision: parsing, header detection, column matching, validation, duplicates, steps and submit. `Klyroo.Spreadsheet` contains one component, `KlySpreadsheetImport`, which reads the importer's properties, renders them, and calls the importer's methods when the user clicks. It stores nothing of its own except which cell is being edited. That split has a practical consequence: anything the component can do, your own code can do by calling the same method, and you can test it without a renderer.
@@ -31,7 +31,7 @@ headers
    |  match to schema columns    key, label, Headers aliases, then your manual choices
    v
 field states                     Matched / Default / Missing / Unmatched (+ Suggestion)
-   |  parse each cell            kind, default, select options, CustomParse
+   |  parse each cell            kind from the property type, default, select options, Parser
    |  run rules, ValidateRow     issues per cell and per row
    |  duplicates, existing, MaxRows, answers, discards
    v
@@ -51,7 +51,7 @@ The rows are derived from three inputs: the loaded sheet, the schema, and the us
 
 **Suggestions.** Matching by name is deterministic. A suggestion is the only fuzzy step, and it is deliberately narrow: it applies only to a required column with no match and no default, only when the column is not a plain text column (it needs a kind, a custom parser or a rule to test against), and only when the candidate file column has at least two non-empty cells, of which at least 80% (out of the first 30) parse and pass the error-level rules. The suggestion is data on the field state. Nothing applies it until you call `AssignColumn`.
 
-**Parsing and issues.** Every cell yields a value in `row.Data` and, when something is wrong, a `SpreadsheetRowIssue` with a stable `Code`. An `Error` issue blocks the row, a `Warning` does not, and `Info` is a note. A row is `Importable` when it is not discarded and has no error. Discarding has one reason per row, picked in this order: row limit, value answer, duplicate, existing record, manual.
+**Parsing and issues.** Every cell yields a value for its row property and, when something is wrong, a `SpreadsheetRowIssue` with a stable `Code`. An `Error` issue blocks the row, a `Warning` does not, and `Info` is a note. A row is `Importable` when it is not discarded and has no error. Discarding has one reason per row, picked in this order: row limit, value answer, duplicate, existing record, manual.
 
 ## The wizard
 
@@ -59,7 +59,7 @@ The rows are derived from three inputs: the loaded sheet, the schema, and the us
 
 ## Submit
 
-`SubmitAsync` sends the importable rows that were not accepted yet to `OnSubmitAsync` (or `OnSubmit`) in batches and collects the rows you reject. Rejected rows get an error issue with code `server` and stay in the importer, so the review can show them. The importer records what each batch got accepted as soon as your callback answers, so a failure or a cancellation in the middle loses nothing: `SubmitAsync` again sends only the rest. `SubmitStatus` moves through `Idle`, `Running`, and `Done`, `Error` or `Cancelled`. An exception from your callback sets `Error` and `SubmitError`. A normal run ends in `Done` even when some rows were rejected: check `RejectedCount`.
+`SubmitAsync` sends the importable rows that were not accepted yet to `OnSubmitAsync` (or `OnSubmit`) in batches, each row as a `SpreadsheetRow<TRow>` with its parsed `Value`, and collects the rows you reject. Rejected rows get an error issue with code `server` and stay in the importer, so the review can show them. The importer records what each batch got accepted as soon as your callback answers, so a failure or a cancellation in the middle loses nothing: `SubmitAsync` again sends only the rest. `SubmitStatus` moves through `Idle`, `Running`, and `Done`, `Error` or `Cancelled`. An exception from your callback sets `Error` and `SubmitError`. A normal run ends in `Done` even when some rows were rejected: check `RejectedCount`.
 
 ## Checks that call your server
 
@@ -79,4 +79,4 @@ Bad data never throws. Unparseable cells, failed rules and refused rows become i
 - **The rows are derived, never patched.** A row is always the result of parsing its text, the user's decisions and the schema, never a value edited in place, which keeps decisions reversible and the rules simple. The importer rebuilds only the rows a change concerns, and a test checks after random sequences of edits, discards and answers that the result equals a full pass over the same state. Loading a 50,000-row file takes about a second and an edit takes milliseconds, but a file is held in memory as text and as rows, so the wizard caps an import at 10,000 rows unless you raise `MaxRows`.
 - **Matching is exact after normalization.** No edit distance or guessing, so the same file always maps the same way. The cost is that a misspelled header is reported as missing, with at most a suggestion based on its values.
 - **The library parses text, not workbooks.** A format reader brings dependencies, licenses and security surface. `LoadWorkbook` lets you bring your own reader and keeps the Core package free of package dependencies.
-- **Values are plain objects.** `row.Data` is a dictionary of `object?` (string, double, bool, ISO date string, option value), which keeps the engine independent of your model. Mapping a row to your type is your code in `OnSubmit`.
+- **The schema is typed by your row class, the engine is not.** `SpreadsheetSchema<TRow>` reads the properties of `TRow` from member expressions, so a column, its default, its rules, its parser and every callback are checked by the compiler, and the host receives a `TRow` (`SpreadsheetRow<TRow>.Value`) instead of a dictionary. Inside, the engine keeps the parsed values of a row as boxed values by column key and only builds a `TRow` when a callback needs one (`ValidateRow`, the batched checks, the submit). The review and the wizard work on cell text, so `SpreadsheetImporter` (the base of `SpreadsheetImporter<TRow>`) and `KlySpreadsheetImport` have no row type. There is no runtime dictionary mode: a column is always a property of a class.
