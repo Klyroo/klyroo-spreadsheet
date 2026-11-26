@@ -37,24 +37,33 @@ texture: cell-grid
 demo:
   file: Program.cs
   language: csharp
-  focus: 12-16
+  focus: 19-25
   code: |
     var schema = SpreadsheetSchema.For<PriceRow>(s =>
     {
-        s.Column(r => r.Sku, c => c.Label("SKU").Required());
-        s.Column(r => r.Price, c => c.Label("Unit price").DecimalSeparator(',').Required().Rule(SpreadsheetRule.Min(0m)));
+        s.Column(r => r.Sku, c => c
+            .Label("SKU").Required());
+        s.Column(r => r.Price, c => c
+            .Label("Unit price")
+            .DecimalSeparator(',')
+            .Required()
+            .Rule(SpreadsheetRule.Min(0m)));
         s.Column(r => r.Currency, c => c.Options(
         [
-            new SpreadsheetOption<Currency>(Currency.Eur, "Euro", ["€"]),
-            new SpreadsheetOption<Currency>(Currency.Usd, "US dollar", ["$"]),
+            new SpreadsheetOption<Currency>(
+                Currency.Eur, "Euro", ["€"]),
+            new SpreadsheetOption<Currency>(
+                Currency.Usd, "US dollar", ["$"]),
         ]));
     });
 
     var importer = new SpreadsheetImporter<PriceRow>(schema);
-    importer.LoadText("SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD", "prices.csv");
+    importer.LoadText(
+        "SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD",
+        "prices.csv");
 
-    Console.WriteLine(importer.ImportableRows.Count); // 1
-    Console.WriteLine(importer.InvalidRows.Count);    // 1: A-2 has a negative price
+    Console.WriteLine(importer.ImportableRows.Count);
+    Console.WriteLine(importer.InvalidRows.Count);
   result:
     title: The rows of prices.csv
     preview: spreadsheet-rows
