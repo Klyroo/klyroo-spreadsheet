@@ -188,10 +188,12 @@ public sealed class SpreadsheetColumn<TRow, TValue> : SpreadsheetColumn<TRow> wh
         return option is null ? null : new SpreadsheetOption(SpreadsheetValueConverter.Format(option.Value), option.Label, option.Aliases);
     }
 
-    // A value the column cannot hold (a null for a non-nullable property, a pending created option that is not a TValue yet) leaves the property at its default.
+    // A null (an empty cell, a Default(null), a cell that could not be read) is stored in a property that can hold it, over what its initializer set.
+    // A property that cannot (an int, a bool, an enum) keeps its initial value, and so does one given a pending created option that is not a TValue yet.
     internal override void Assign(object row, object? boxedValue)
     {
         if (boxedValue is TValue typed) _setter((TRow)row, typed);
+        else if (boxedValue is null && SpreadsheetValueConverter.IsNullable(typeof(TValue))) _setter((TRow)row, default!);
     }
 }
 

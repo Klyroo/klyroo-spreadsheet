@@ -74,7 +74,7 @@ Yes. Everything the component displays comes from the importer's properties (`Fi
 No. Edits, discards and mapping choices live in the importer. The result is what `OnSubmit` receives.
 
 **What do I get in `OnSubmit`?**
-A `SpreadsheetRow<TRow>` per row: its `Value` is an instance of your row class with each column property set (a `string`, a number, a `bool`, a date, an enum member), and the cells as text are in `Cells`. An empty cell leaves the property at the default of its type (`null` for a nullable one), which is why a property that cannot hold `null` makes its column required.
+A `SpreadsheetRow<TRow>` per row: its `Value` is an instance of your row class with each column property set (a `string`, a number, a `bool`, a date, an enum member), and the cells as text are in `Cells`. An empty cell leaves the property at the default of its type (`null` for a nullable one), which is why a property that cannot hold `null` makes its column required. The `null` is stored, so it replaces an initializer such as `public int? Seats { get; set; } = 7;` (and `Default(null)` does the same), while a property that cannot hold `null` keeps its initializer.
 
 **How are CSV separators and quotes handled?**
 The separator is the most frequent of tab, semicolon and comma in the first row outside quotes (comma when none appears, and on a tie tab wins over semicolon, and semicolon over comma). Quoted fields can hold separators, doubled quotes and line breaks. A leading byte order mark is dropped, blank rows are skipped, and cells are trimmed.
