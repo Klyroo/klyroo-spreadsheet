@@ -37,7 +37,7 @@ To use the library in an app:
 - **A browser with the native popover API**, which Klyroo.UI uses: Chrome and Edge 114, Safari 17 or Firefox 125, or later. In a .NET MAUI app, that means iOS or Mac Catalyst 17, or an Android System WebView 114 or later.
 - **Network access on the first build** only if your app self-hosts web fonts (`KlyrooFont`), uses icons outside the built-in set, or compiles Tailwind (`KlyrooTailwind`): the build downloads them once and caches them under `obj/klyroo`. Node.js is not needed.
 
-To build this repository you need the .NET 10 SDK (a newer SDK works too, see `global.json`) and clones of `klyroo-ui` in the same parent folder: some projects reference them by relative path (`../klyroo-ui/...`). See [Contributing](CONTRIBUTING.md).
+To build this repository you need the .NET 10 SDK (a newer SDK works too, see `global.json`) and a clone of `klyroo-ui` in the same parent folder: some projects reference it by relative path (`../klyroo-ui/...`). See [Contributing](CONTRIBUTING.md).
 
 ## Installation
 
