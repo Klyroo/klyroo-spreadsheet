@@ -97,7 +97,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `AmbiguousDetection` | `bool` | `true` when several sheets matched the schema equally well and the first one was picked. Offer the user a sheet choice in that case. |
 | `CanNextStep` | `bool` | Whether the current step is ready and is not the last one. |
 | `CanPreviousStep` | `bool` | Whether there is an earlier step and no submit is running. |
-| `CanSubmit` | `bool` | `true` when a file is loaded, no field is missing, no question is open and at least one row is importable. |
+| `CanSubmit` | `bool` | `true` when a file is loaded, no field is missing, no question is open, no async check is running and at least one importable row is still pending (not accepted yet, see `SpreadsheetImporter.PendingRows`). The component disables its Import button when this is `false`. |
 | `CurrentSheet` | `SpreadsheetSheet?` | The sheet being imported: the selected one, otherwise the first. |
 | `CurrentStepKey` | `string` | The key of the wizard step in progress: `file`, `columns`, `values`, `review` or `submit`. |
 | `DefaultMaxRows` (get, set) | `int?` | A row limit that applies when `SpreadsheetSchema.MaxRows` is `null`. `null` (the default) means no limit. `KlySpreadsheetImport` sets it from its `MaxRows` parameter. Rows past the limit are left out with `SpreadsheetDiscardReason.Limit`. |
@@ -117,6 +117,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `InspectedRowIndex` | `int?` | The `SpreadsheetRow.Index` of the row open in the inspector, or `null`. |
 | `InvalidRows` | `IReadOnlyList<SpreadsheetRow>` | The rows with at least one error that are not discarded. The list is cached until a row changes. |
 | `LimitedRowCount` | `int` | The number of rows left out because they are past `SpreadsheetImporter.EffectiveMaxRows`. |
+| `MappingLocked` | `bool` | `true` while a submit runs or once some rows were accepted: the column mapping, the sheet, the header row and the answers to value questions are then fixed, because the accepted rows were sent as they were read. Methods that would change them do nothing. `SpreadsheetImporter.ResetSubmit` (or loading another file) unlocks them. |
 | `MissingFields` | `IReadOnlyList<SpreadsheetFieldState>` | The fields with status `SpreadsheetColumnStatus.Missing`. Submission is blocked while this is not empty. |
 | `NeedsAsyncValidation` | `bool` | `true` when async checks are defined, a file is loaded, rows changed since they last completed, and no check is running or has failed (a failed run is repeated by `SpreadsheetImporter.ValidateAsync` or by `SpreadsheetImporter.SubmitAsync`). `KlySpreadsheetImport` runs the checks itself when this is `true` on the review step. |
 | `OpenQuestions` | `IReadOnlyList<SpreadsheetValueQuestion>` | The questions with no answer yet. Submission is blocked while this is not empty. |
@@ -167,6 +168,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `InspectNextIssueRow()` | `void` | Moves the inspector to the next non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectPreviousIssueRow()` | `void` | Moves the inspector to the previous non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectRow(int? rowIndex)` | `void` | Opens a row in the inspector, or closes the inspector. |
+| `IsRowAccepted(int rowIndex)` | `bool` | Whether a row was accepted by the host. An accepted row is final: it cannot be edited, left out or restored. |
 | `LoadFileAsync(Stream content, string fileName, long maxBytes = 10485760, CancellationToken cancellationToken = null)` | `Task` | Reads a file and loads it: an `.xlsx` workbook through `SpreadsheetXlsxReader`, a legacy `.xls` workbook through `SpreadsheetXlsReader`, anything else as delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. The content decides for the legacy format: a file that starts with the OLE2 signature is read as `.xls` whatever its extension, a zip archive named `.xls` is read as `.xlsx`, and a text export named `.xls` (tab-separated or CSV, as many applications produce) is read as delimited text. An HTML or XML export named `.xls` is refused. |
 | `LoadText(string text, string fileName = "import.csv")` | `void` | Parses delimited text as a one-sheet workbook and loads it, replacing any previous file and discarding the user's corrections. |
 | `LoadWorkbook(SpreadsheetWorkbook workbook)` | `void` | Loads a prepared workbook, replacing any previous file and discarding the user's column choices, answers, edits and discards. Detects the sheet and header row unless the schema forces them. |
@@ -361,8 +363,9 @@ A column mapping and the answers to unknown values, in a form you can store and 
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `Columns` (init) | `IReadOnlyDictionary<string, string>` | The file headers and the column they were mapped to: the header after `SpreadsheetImporter.NormalizeText` (lower case, no accents, no trailing `*`) mapped to the `SpreadsheetColumnSchema.Key`. |
+| `Columns` (init) | `IReadOnlyDictionary<string, string>` | The file headers and the column they were mapped to: the header after `SpreadsheetImporter.NormalizeText` (lower case, no accents, no trailing `*`) mapped to the `SpreadsheetColumnSchema.Key`. When a header appears several times in the file, this holds its first occurrence and `SpreadsheetMappingProfile.RepeatedColumns` the others. |
 | `IgnoredColumns` (init) | `IReadOnlyList<string>` | The keys of the columns the user declared absent from the file with `SpreadsheetImporter.IgnoreColumn`. |
+| `RepeatedColumns` (init) | `IReadOnlyDictionary<string, string>` | The columns mapped to the second, third and later occurrence of a header that repeats in the file (two `Date` columns, for example): `"2:date"` is the second column headed `date`, mapped to a column key. It keeps a re-applied profile from sending both occurrences to the same column. |
 | `SchemaKey` (init) | `string?` | The `SpreadsheetSchema.Key` the profile was made for. A profile with a key is applied only to a schema with the same key. `null` applies to any schema. |
 | `ValueAnswers` (init) | `IReadOnlyDictionary<string, SpreadsheetValueAnswer>` | The answers to unknown select values, by question id (`columnKey::normalizedValue`, see `SpreadsheetValueQuestion.Id`). |
 | `Version` (init) | `int` | The format version. A profile of an unknown version is not applied. |
@@ -976,6 +979,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `SkipRows` (init) | `string` | The choice that leaves out the rows that hold the value (`"Don't import these rows"`). |
 | `StatusBlocking` (init) | `string` | The status of a row with errors (`"Blocking"`). |
 | `StatusDiscarded` (init) | `string` | The status of a row left out of the import (`"Discarded"`). |
+| `StatusImported` (init) | `string` | The status of a row the host accepted. It is final: the row can no longer be edited or left out (`"Imported"`). |
 | `StatusValid` (init) | `string` | The status of a row without issues (`"Valid"`). |
 | `StatusWarning` (init) | `string` | The status of a row with warnings only (`"Warning"`). |
 | `StepColumns` (init) | `string` | The title of the columns step (`"Columns"`). |
