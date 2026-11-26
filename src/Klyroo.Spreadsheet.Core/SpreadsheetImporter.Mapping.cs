@@ -4,6 +4,7 @@ namespace Klyroo.Spreadsheet;
 public abstract partial class SpreadsheetImporter
 {
     private SpreadsheetMappingProfile? _savedMapping;
+    private Dictionary<string, string?>? _foldedKeys;
 
     /// <summary>
     /// A stored mapping to apply automatically. Whenever a file is loaded, or another sheet or header row is chosen, and the headers match the profile
@@ -143,6 +144,29 @@ public abstract partial class SpreadsheetImporter
         return true;
     }
 
+    // The column key a stored key names: the key itself when a column has it, otherwise the one column whose key differs only in case (a profile saved when
+    // keys were lowercase names still applies to the property-name keys). Null when no column, or more than one, matches that way.
+    private string? ResolveProfileKey(string? key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (_foldedKeys is null)
+        {
+            var folded = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var column in Schema.Columns)
+            {
+                if (!string.IsNullOrEmpty(column.From)) continue;
+                var lower = column.Key.ToLowerInvariant();
+                folded[lower] = folded.ContainsKey(lower) ? null : column.Key;
+            }
+            _foldedKeys = folded;
+        }
+        foreach (var column in Schema.Columns)
+        {
+            if (string.IsNullOrEmpty(column.From) && column.Key == key) return key;
+        }
+        return _foldedKeys.GetValueOrDefault(key.ToLowerInvariant());
+    }
+
     // A profile comes from storage, so it is untrusted: null keys and values, unknown columns, answers that do not fit the column and undefined enum values are skipped.
     private SpreadsheetMappingApplyResult ApplyProfileCore(SpreadsheetMappingProfile profile, IReadOnlyList<string> headers)
     {
@@ -162,9 +186,10 @@ public abstract partial class SpreadsheetImporter
             return null;
         }
 
-        void Map(string header, int occurrence, string? key)
+        void Map(string header, int occurrence, string? storedKey)
         {
-            if (string.IsNullOrEmpty(header) || string.IsNullOrEmpty(key) || !columnsByKey.ContainsKey(key)) return;
+            var key = ResolveProfileKey(storedKey);
+            if (string.IsNullOrEmpty(header) || key is null) return;
             if (Find(header, occurrence) is not { } h || usedHeaders.Contains(h)) return;
             usedHeaders.Add(h);
             foreach (var other in _manualColumns.Where(kv => kv.Value == h && kv.Key != key).Select(kv => kv.Key).ToList())
@@ -181,10 +206,11 @@ public abstract partial class SpreadsheetImporter
             if (repeatedKey is not null && TrySplitRepeated(repeatedKey, out var occurrence, out var header)) Map(header, occurrence, key);
         }
 
+        var mappedKeys = profile.Columns.Values.Concat(profile.RepeatedColumns.Values).Select(ResolveProfileKey).Where(k => k is not null).ToHashSet(StringComparer.Ordinal);
         var ignored = 0;
-        foreach (var key in profile.IgnoredColumns)
+        foreach (var storedKey in profile.IgnoredColumns)
         {
-            if (string.IsNullOrEmpty(key) || !columnsByKey.ContainsKey(key) || profile.Columns.Values.Contains(key) || profile.RepeatedColumns.Values.Contains(key)) continue;
+            if (ResolveProfileKey(storedKey) is not { } key || mappedKeys.Contains(key)) continue;
             _manualColumns[key] = null;
             ignored++;
         }
@@ -194,9 +220,9 @@ public abstract partial class SpreadsheetImporter
         {
             if (string.IsNullOrEmpty(id) || answer is null || !Enum.IsDefined(answer.Action)) continue;
             var separator = id.IndexOf("::", StringComparison.Ordinal);
-            if (separator <= 0 || !columnsByKey.TryGetValue(id[..separator], out var column)) continue;
+            if (separator <= 0 || ResolveProfileKey(id[..separator]) is not { } answeredKey || !columnsByKey.TryGetValue(answeredKey, out var column)) continue;
             if (!AnswerFits(column, answer)) continue;
-            _valueAnswers[id] = answer;
+            _valueAnswers[answeredKey + id[separator..]] = answer;
             answers++;
         }
         return new SpreadsheetMappingApplyResult(mapped, ignored, answers);

@@ -1466,7 +1466,7 @@ public abstract partial class SpreadsheetImporter
     // A header the saved mapping sends to this column counts when looking for the header row, so a file whose headers are renamed (and
     // sit under a banner) is still read from the right row.
     private bool IsSavedHeader(SpreadsheetColumnSchema col, string headerText) =>
-        _savedMapping is { } saved && saved.Columns.TryGetValue(NormalizeText(headerText), out var key) && key == col.Key;
+        _savedMapping is { } saved && saved.Columns.TryGetValue(NormalizeText(headerText), out var key) && ResolveProfileKey(key) == col.Key;
 
     private static bool IsHeaderMatch(SpreadsheetColumnSchema col, string headerText)
     {

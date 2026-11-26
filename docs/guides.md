@@ -387,7 +387,7 @@ Goal: do not make the same user map the same export every month.
 
 In the samples below, `Member` is a row class with the properties `Name`, `Email`, `Level` and `Note`, and `schema` is its schema.
 
-The profile stores column keys, which are the property names unless you call `Key("...")` on a column, so set a key when you rename a property and stored profiles must keep working.
+The profile stores column keys, which are the property names unless you call `Key("...")` on a column, so set a key when you rename a property and stored profiles must keep working. A stored key is matched exactly first and, when no column has it, case-insensitively when exactly one column fits, so a profile saved with lowercase keys (`sku`) before the schema was typed still applies to the property name (`Sku`); the next `GetMappingProfile()` writes the new key.
 
 `GetMappingProfile()` captures the mapping the user finished: each file header that feeds a column, the columns they declared absent, and their answers to unknown values. It holds header texts, column keys and answers, never cell data. Store it with `ToJson()`:
 
