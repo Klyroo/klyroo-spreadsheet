@@ -9,16 +9,13 @@ namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class XlsImportTests : BunitContext
 {
-    private static SpreadsheetSchema PriceSchema() => new()
-    {
-        Key = "prices",
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "product", Label = "Product", Required = true },
-            new SpreadsheetColumnSchema { Key = "price", Label = "Price", Kind = SpreadsheetColumnKind.Number, DecimalSeparator = ',' },
-            new SpreadsheetColumnSchema { Key = "since", Label = "Since", Kind = SpreadsheetColumnKind.Date },
-        ]
-    };
+    private static SpreadsheetSchema<ImportRow> PriceSchema() => SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Key = "prices";
+            sb.Column(r => r.Product, col => col.Label("Product").Required());
+            sb.Column(r => r.Price, col => col.Label("Price").DecimalSeparator(','));
+            sb.Column(r => r.Since, col => col.Label("Since"));
+        });
 
     // The same data as the .xlsx fixture of FilesAndSubmitTests: a header row, a gap, then a product with a price and a date.
     private static byte[] PricesXls()
@@ -57,15 +54,15 @@ public sealed class XlsImportTests : BunitContext
     [Fact]
     public async Task LoadFileAsync_imports_an_xls_like_the_same_xlsx()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(new MemoryStream(PricesXls()), "prices.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
 
-        var row = Assert.Single(importer.AllRows);
+        var row = importer.ToTyped(Assert.Single(importer.AllRows));
         Assert.Empty(row.Issues);
-        Assert.Equal("Café crème", row.Data["product"]);
-        Assert.Equal(1234.5, row.Data["price"]);
-        Assert.Equal("2025-01-01", row.Data["since"]);
+        Assert.Equal("Café crème", row.Value.Product);
+        Assert.Equal(1234.5, row.Value.Price);
+        Assert.Equal(new DateOnly(2025, 1, 1), row.Value.Since);
         Assert.Equal(3, row.RowNumber);
         Assert.Equal("prices.xls", importer.FileName);
     }
@@ -76,27 +73,27 @@ public sealed class XlsImportTests : BunitContext
     [InlineData("prices")]
     public async Task LoadFileAsync_reads_a_legacy_workbook_by_its_content_whatever_the_extension(string fileName)
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(new MemoryStream(PricesXls()), fileName, cancellationToken: Xunit.TestContext.Current.CancellationToken);
 
-        Assert.Equal("Café crème", Assert.Single(importer.AllRows).Data["product"]);
+        Assert.Equal("Café crème", importer.ToTyped(Assert.Single(importer.AllRows)).Value.Product);
     }
 
     [Fact]
     public async Task LoadFileAsync_reads_a_zip_archive_named_xls_as_an_xlsx()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(MinimalXlsx(), "renamed.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
 
-        Assert.Equal("Zipped", Assert.Single(importer.AllRows).Data["product"]);
+        Assert.Equal("Zipped", importer.ToTyped(Assert.Single(importer.AllRows)).Value.Product);
     }
 
     [Fact]
     public async Task LoadFileAsync_refuses_an_xls_that_is_not_a_workbook_and_says_why()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         var html = await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream("<table><tr><td>a</td></tr></table>"u8.ToArray()), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken));
         Assert.Contains(".xls", html.Message);
@@ -118,22 +115,22 @@ public sealed class XlsImportTests : BunitContext
     [InlineData("\uFEFFProduct;Price;Since\nCafé crème;1234,5;01/01/2025\n")]
     public async Task LoadFileAsync_reads_a_text_export_named_xls_as_delimited_text(string text)
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text)), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
 
-        var row = Assert.Single(importer.AllRows);
-        Assert.Equal("Café crème", row.Data["product"]);
+        var row = importer.ToTyped(Assert.Single(importer.AllRows));
+        Assert.Equal("Café crème", row.Value.Product);
         Assert.Equal("export.xls", importer.FileName);
     }
 
     [Fact]
     public async Task LoadFileAsync_reads_a_Latin1_text_export_named_xls_and_refuses_binary_or_markup()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(new MemoryStream(System.Text.Encoding.Latin1.GetBytes("Product\tPrice\nCafé\t2\n")), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
-        Assert.Equal("Café", Assert.Single(importer.AllRows).Data["product"]);
+        Assert.Equal("Café", importer.ToTyped(Assert.Single(importer.AllRows)).Value.Product);
 
         var xml = await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream("  <?xml version=\"1.0\"?><Workbook/>"u8.ToArray()), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken));
         Assert.Contains("HTML or XML", xml.Message);
@@ -143,7 +140,7 @@ public sealed class XlsImportTests : BunitContext
     [Fact]
     public async Task LoadFileAsync_still_applies_the_size_limit_to_an_xls()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream(PricesXls()), "prices.xls", maxBytes: 1024, cancellationToken: Xunit.TestContext.Current.CancellationToken));
 
@@ -154,20 +151,20 @@ public sealed class XlsImportTests : BunitContext
     public void Choosing_an_xls_file_in_the_component_loads_it()
     {
         Services.AddKlyrooSpreadsheet();
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(PricesXls(), "legacy.xls"));
 
         cut.WaitForAssertion(() => Assert.True(importer.FileLoaded));
         Assert.Equal("legacy.xls", importer.FileName);
-        Assert.Equal("Café crème", Assert.Single(importer.AllRows).Data["product"]);
+        Assert.Equal("Café crème", importer.ToTyped(Assert.Single(importer.AllRows)).Value.Product);
     }
 
     [Fact]
     public async Task The_golden_file_loads_through_the_importer()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
 
         await importer.LoadFileAsync(new MemoryStream(XlsGoldenFixture.Bytes()), "golden.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
 

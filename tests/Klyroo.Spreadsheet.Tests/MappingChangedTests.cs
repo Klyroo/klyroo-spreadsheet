@@ -12,15 +12,12 @@ public sealed class MappingChangedTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetImporter NewImporter() => new(new SpreadsheetSchema
+    private static SpreadsheetImporter<ImportRow> NewImporter() => new(SpreadsheetSchema.For<ImportRow>(sb =>
     {
-        Key = "people",
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true },
-            new SpreadsheetColumnSchema { Key = "level", Label = "Level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("pro", "Pro")] },
-        ],
-    });
+        sb.Key = "people";
+        sb.Column(r => r.Name, col => col.Key("name").Label("Name").Required());
+        sb.Column(r => r.Level, col => col.Key("level").Label("Level").Options([new SpreadsheetOption<string?>("pro", "Pro")]));
+    }));
 
     private const string File = "Full name;Plan\nAda;Gold";
 
@@ -92,7 +89,7 @@ public sealed class MappingChangedTests : BunitContext
         next.LoadText(levelFile, "next.csv");
 
         Assert.True(next.SavedMappingApplied);
-        Assert.Equal("pro", next.AllRows[0].Data["level"]);
+        Assert.Equal("pro", next.Value(0).Level);
         Assert.Empty(next.MissingFields);
     }
 

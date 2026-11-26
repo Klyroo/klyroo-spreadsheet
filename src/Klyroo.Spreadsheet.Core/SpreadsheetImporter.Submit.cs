@@ -2,7 +2,7 @@ namespace Klyroo.Spreadsheet;
 
 // Submitting: batches go to the host one after the other, and what the host accepted is recorded batch by batch, so a failure
 // or a cancellation in the middle never makes a retry send the accepted rows again.
-public sealed partial class SpreadsheetImporter
+public abstract partial class SpreadsheetImporter
 {
     private readonly HashSet<int> _accepted = [];
     private CancellationTokenSource? _submitCts;
@@ -17,14 +17,14 @@ public sealed partial class SpreadsheetImporter
     public IReadOnlyList<SpreadsheetRow> PendingRows => ImportableRows.Where(r => !_accepted.Contains(r.Index)).ToList();
 
     /// <summary>
-    /// Sends every importable row that was not accepted yet to <see cref="SpreadsheetSchema.OnSubmitAsync"/> (or <see cref="SpreadsheetSchema.OnSubmit"/>) in batches of
-    /// <see cref="SpreadsheetSchema.BatchSize"/>. It first calls <see cref="SpreadsheetColumnSchema.OnCreateOptionAsync"/> or <see cref="SpreadsheetColumnSchema.OnCreateOption"/> once for each value
+    /// Sends every importable row that was not accepted yet to the schema's submit callback in batches of
+    /// <see cref="SpreadsheetSchema.BatchSize"/>. It first calls the column's create-option callback once for each value
     /// answered with Create, then runs the async checks of <see cref="ValidateAsync"/> when <see cref="NeedsAsyncValidation"/> (rows the checks flag with an error are left out of the send and shown as invalid).
     /// Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice.
     /// An exception from a callback is caught and reported in <see cref="SubmitError"/>; a cancellation ends in <see cref="SpreadsheetSubmitStatus.Cancelled"/>.
     /// Does nothing while a submit is running or when <see cref="CanSubmit"/> is <see langword="false"/>.
     /// </summary>
-    /// <param name="cancellationToken">Cancels the submit. The batch in flight is cancelled through the token given to <see cref="SpreadsheetSchema.OnSubmitAsync"/> and counts as not accepted. <see cref="CancelSubmit"/> does the same.</param>
+    /// <param name="cancellationToken">Cancels the submit. The batch in flight is cancelled through the token given to the submit callback and counts as not accepted. <see cref="CancelSubmit"/> does the same.</param>
     /// <returns>A task that completes when the submit has finished, failed or been cancelled.</returns>
     public async Task SubmitAsync(CancellationToken cancellationToken = default)
     {
@@ -103,13 +103,9 @@ public sealed partial class SpreadsheetImporter
                 token.ThrowIfCancellationRequested();
                 var batch = rowsToSend.Skip(offset).Take(batchSize).ToList();
                 IReadOnlyList<SpreadsheetRejectedRow>? rejected = null;
-                if (Schema.OnSubmitAsync is { } submitAsync)
+                if (Schema.HasSubmit)
                 {
-                    rejected = await submitAsync(batch, token);
-                }
-                else if (Schema.OnSubmit is { } submit)
-                {
-                    rejected = await submit(batch);
+                    rejected = await Schema.SubmitBatchAsync(batch, token);
                 }
 
                 var batchIndexes = batch.Select(r => r.Index).ToHashSet();
@@ -162,19 +158,8 @@ public sealed partial class SpreadsheetImporter
             foreach (var q in _questions.Where(q => q.Answer?.Action == SpreadsheetValueAnswerAction.Create).ToList())
             {
                 var col = Schema.Columns.FirstOrDefault(c => c.Key == q.FieldKey);
-                SpreadsheetOption? option;
-                if (col?.OnCreateOptionAsync is { } createAsync)
-                {
-                    option = await createAsync(q.RawValue, cancellationToken);
-                }
-                else if (col?.OnCreateOption is { } create)
-                {
-                    option = create(q.RawValue);
-                }
-                else
-                {
-                    continue;
-                }
+                if (col is null || !col.CanCreateOption) continue;
+                var option = await col.CreateOptionAsync(q.RawValue, cancellationToken);
                 var value = string.IsNullOrEmpty(option?.Value) ? q.RawValue : option.Value;
                 _valueAnswers[q.Id] = new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, value, option?.Label ?? value);
                 created = true;

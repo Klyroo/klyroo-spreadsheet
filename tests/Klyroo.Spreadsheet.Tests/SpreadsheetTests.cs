@@ -18,37 +18,19 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.Equal("prenom", SpreadsheetImporter.NormalizeText("Prénom"));
         Assert.Equal("Secure code", SpreadsheetImporter.HumanizeKey("secureCode"));
 
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(s =>
         {
-            Key = "rates",
-            Columns =
+            s.Key = "rates";
+            s.Column(r => r.Code, c => c.Label("Code").Required());
+            s.Column(r => r.Price, c => c.Label("Unit Price").DecimalSeparator(',').Required().Rule(SpreadsheetRule.Min(0d)));
+            s.Column(r => r.Currency, c => c.Label("Currency").Required().Options(
             [
-                new SpreadsheetColumnSchema { Key = "code", Label = "Code", Required = true },
-                new SpreadsheetColumnSchema
-                {
-                    Key = "price",
-                    Label = "Unit Price",
-                    Kind = SpreadsheetColumnKind.Number,
-                    DecimalSeparator = ',',
-                    Required = true,
-                    Rules = [SpreadsheetRule.Min(0)]
-                },
-                new SpreadsheetColumnSchema
-                {
-                    Key = "currency",
-                    Label = "Currency",
-                    Kind = SpreadsheetColumnKind.Select,
-                    Required = true,
-                    Options =
-                    [
-                        new SpreadsheetOption("EUR", "Euro", ["€", "EUR"]),
-                        new SpreadsheetOption("USD", "US Dollar", ["$", "USD"])
-                    ]
-                }
-            ]
-        };
+                new SpreadsheetOption<string?>("EUR", "Euro", ["€", "EUR"]),
+                new SpreadsheetOption<string?>("USD", "US Dollar", ["$", "USD"])
+            ]));
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
 
         // Title row on line 1, headers on line 2, "Amount" instead of "Unit Price" so price is missing and gets a suggestion!
         var csv = "Export Report 2026;;\nCode;Amount;Currency\nA1;12,50;€\nA2;45,00;USD";
@@ -57,7 +39,7 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.True(importer.FileLoaded);
         Assert.Equal(2, importer.HeaderRowNumber);
         Assert.Single(importer.MissingFields);
-        Assert.Equal("price", importer.MissingFields[0].Column.Key);
+        Assert.Equal("Price", importer.MissingFields[0].Column.Key);
 
         // Suggestion must identify "Amount" (since 100% >= 80% of samples parse as valid numbers >= 0) without auto-applying
         var suggestion = importer.MissingFields[0].Suggestion;
@@ -65,48 +47,32 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.Equal("Amount", suggestion.HeaderText);
 
         // Apply suggestion
-        importer.AssignColumn("price", suggestion.HeaderIndex);
+        importer.AssignColumn("Price", suggestion.HeaderIndex);
         Assert.Empty(importer.MissingFields);
         Assert.Equal(2, importer.ImportableRows.Count);
-        Assert.Equal(12.5, importer.AllRows[0].Data["price"]);
-        Assert.Equal("EUR", importer.AllRows[0].Data["currency"]);
+        Assert.Equal(12.5, importer.Value(0).Price);
+        Assert.Equal("EUR", importer.Value(0).Currency);
     }
 
     [Fact]
     public void SpreadsheetImporter_handles_unknown_value_questions_duplicates_existing_records_and_inline_edits()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(s =>
         {
-            Key = "candidates",
-            RowKeyField = "email",
-            Duplicates = SpreadsheetDuplicatesPolicy.Error,
-            ExistingRecords = new Dictionary<string, IReadOnlyDictionary<string, object?>>
+            s.Key = "candidates";
+            s.Duplicates = SpreadsheetDuplicatesPolicy.Error;
+            s.ExistingRecords = new Dictionary<string, ImportRow>
             {
-                ["bob@example.com"] = new Dictionary<string, object?> { ["email"] = "bob@example.com", ["level"] = "B2" }
-            },
-            ExistingAction = SpreadsheetExistingAction.Update,
-            Columns =
-            [
-                new SpreadsheetColumnSchema
-                {
-                    Key = "email",
-                    Label = "Email",
-                    Required = true,
-                    Rules = [SpreadsheetRule.Email()]
-                },
-                new SpreadsheetColumnSchema
-                {
-                    Key = "level",
-                    Label = "Level",
-                    Kind = SpreadsheetColumnKind.Select,
-                    Required = true,
-                    Options = [new SpreadsheetOption("B1", "B1"), new SpreadsheetOption("B2", "B2")],
-                    UnknownPolicy = SpreadsheetUnknownValuePolicy.Ask
-                }
-            ]
-        };
+                ["bob@example.com"] = new ImportRow { Email = "bob@example.com", Level = "B2" }
+            };
+            s.ExistingAction = SpreadsheetExistingAction.Update;
+            s.RowKey(s.Column(r => r.Email, c => c.Label("Email").Required().Rule(SpreadsheetRule.Email())));
+            s.Column(r => r.Level, c => c.Label("Level").Required()
+                .Options([new SpreadsheetOption<string?>("B1", "B1"), new SpreadsheetOption<string?>("B2", "B2")])
+                .UnknownPolicy(SpreadsheetUnknownValuePolicy.Ask));
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.Paste("Email\tLevel\nalice@example.com\tC1-Advanced\nalice@example.com\tB1\nbob@example.com\tB2");
 
         // 1 open question for "C1-Advanced", and duplicate key error on rows 0 and 1 ("alice@example.com")
@@ -116,11 +82,11 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.Equal(SpreadsheetRowMode.Update, importer.AllRows[2].Mode);
 
         // Answer question by mapping "C1-Advanced" -> "B2"
-        importer.AnswerValue("level", "C1-Advanced", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "B2", "B2"));
+        importer.AnswerValue("Level", "C1-Advanced", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "B2", "B2"));
         Assert.Empty(importer.OpenQuestions);
 
         // Fix duplicate email on row 1 via inline cell edit
-        importer.EditCell(1, "email", "charlie@example.com");
+        importer.EditCell(1, "Email", "charlie@example.com");
         Assert.True(importer.AllRows[1].Edited);
         Assert.Equal(3, importer.ImportableRows.Count);
         Assert.True(importer.CanSubmit);
@@ -130,27 +96,24 @@ public sealed class SpreadsheetTests : BunitContext
     public async Task KlySpreadsheetImport_drives_wizard_steps_skips_resolved_steps_and_handles_batch_submit_rejections()
     {
         var badRowFailures = 0;
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(s =>
         {
-            Key = "users",
-            BatchSize = 1,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true }
-            ],
-            OnSubmit = rows =>
+            s.Key = "users";
+            s.BatchSize = 1;
+            s.Column(r => r.Name, c => c.Label("Name").Required());
+            s.OnSubmit = rows =>
             {
-                if (rows[0].Data["name"]?.ToString() == "BadRow" && badRowFailures++ == 0)
+                if (rows[0].Value.Name == "BadRow" && badRowFailures++ == 0)
                 {
                     return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>([
-                        new SpreadsheetRejectedRow(rows[0].Index, "Server rejected name", "name")
+                        new SpreadsheetRejectedRow(rows[0].Index, "Server rejected name", "Name")
                     ]);
                 }
                 return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>([]);
-            }
-        };
+            };
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         Assert.Equal("file", importer.CurrentStepKey);

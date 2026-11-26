@@ -1,7 +1,7 @@
 namespace Klyroo.Spreadsheet;
 
 // Saved mappings: the mapping of file headers to schema columns and the answers to unknown values, exported and applied again.
-public sealed partial class SpreadsheetImporter
+public abstract partial class SpreadsheetImporter
 {
     private SpreadsheetMappingProfile? _savedMapping;
 
@@ -207,7 +207,7 @@ public sealed partial class SpreadsheetImporter
     {
         SpreadsheetValueAnswerAction.Map => column.Kind == SpreadsheetColumnKind.Select
             && answer.MappedValue is { } value && column.Options?.Any(o => o.Value == value) == true,
-        SpreadsheetValueAnswerAction.Create => column.OnCreateOption is not null || column.OnCreateOptionAsync is not null,
+        SpreadsheetValueAnswerAction.Create => column.CanCreateOption,
         _ => true,
     };
 }

@@ -18,19 +18,18 @@ public sealed class ScaleTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetSchema BulkSchema(int? maxRows = null) => new()
-    {
-        Key = "bulk",
-        MaxRows = maxRows,
-        RowKeyField = "code",
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "code", Label = "Code", Required = true },
-            new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-            new SpreadsheetColumnSchema { Key = "amount", Label = "Amount", Kind = SpreadsheetColumnKind.Number, Rules = [SpreadsheetRule.Min(0)] },
-            new SpreadsheetColumnSchema { Key = "level", Label = "Level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A"), new SpreadsheetOption("b", "B")] },
-        ],
-    };
+    private static SpreadsheetSchema<ImportRow> BulkSchema(int? maxRows = null) => SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Key = "bulk";
+            sb.MaxRows = maxRows;
+            var colCode = sb.Column(r => r.Code, col => col.Label("Code").Required());
+            sb.Column(r => r.Email, col => col.Label("Email").Required().Rule(SpreadsheetRule.Email()));
+            sb.Column(r => r.Amount, col => col.Label("Amount").Rule(SpreadsheetRule.Min(0d)));
+            sb.Column(r => r.Level, col => col
+                .Label("Level")
+                .Options([new SpreadsheetOption<string?>("a", "A"), new SpreadsheetOption<string?>("b", "B")]));
+            sb.RowKey(colCode);
+        });
 
     private static string BulkCsv(int rows)
     {
@@ -47,7 +46,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void Fifty_thousand_rows_load_and_take_edits_within_a_generous_bound()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         var watch = Stopwatch.StartNew();
         importer.LoadText(BulkCsv(Rows), "bulk.csv");
         var load = watch.Elapsed;
@@ -60,21 +59,21 @@ public sealed class ScaleTests : BunitContext
         watch.Restart();
         for (var i = 0; i < 100; i++)
         {
-            importer.EditCell(i, "email", "not-an-email");
+            importer.EditCell(i, "Email", "not-an-email");
             Assert.Equal(Rows - 1, importer.ImportableRows.Count);
             Assert.Single(importer.InvalidRows);
             _ = importer.ReviewPageRows;
-            importer.EditCell(i, "email", $"fixed{i}@klyroo.dev");
+            importer.EditCell(i, "Email", $"fixed{i}@klyroo.dev");
             Assert.Equal(Rows, importer.ImportableRows.Count);
         }
         var edits = watch.Elapsed;
         Assert.True(edits < TimeSpan.FromSeconds(30), $"200 edits of a {Rows}-row file took {edits}");
 
         // An edit that makes two keys equal flags both rows, and fixing it clears both, without reading the file again.
-        importer.EditCell(10, "code", importer.AllRows[11].Data["code"]!.ToString()!);
+        importer.EditCell(10, "Code", importer.Value(11).Code!.ToString()!);
         Assert.Equal(2, importer.InvalidRows.Count);
         Assert.All(importer.InvalidRows, r => Assert.Contains(r.Issues, i => i.Code == "row.duplicate"));
-        importer.RevertCell(10, "code");
+        importer.RevertCell(10, "Code");
         Assert.Empty(importer.InvalidRows);
     }
 
@@ -82,16 +81,16 @@ public sealed class ScaleTests : BunitContext
     public void Editing_a_cell_parses_only_the_edited_row()
     {
         var parsed = 0;
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [new SpreadsheetColumnSchema { Key = "name", CustomParse = s => { parsed++; return s.Trim(); } }],
-        });
+            sb.Column(r => r.Name, col => col.Parser(s => { parsed++; return SpreadsheetParseResult<string?>.Ok(s.Trim()); }));
+        }));
         importer.LoadText("Name\n" + string.Join('\n', Enumerable.Range(0, 1_000).Select(i => $"row{i}")), "names.csv");
         Assert.Equal(1_000, parsed);
 
-        importer.EditCell(500, "name", "edited");
+        importer.EditCell(500, "Name", "edited");
         Assert.Equal(1_001, parsed);
-        importer.RevertCell(500, "name");
+        importer.RevertCell(500, "Name");
         Assert.Equal(1_002, parsed);
         importer.DiscardRows([1, 2, 3]);
         importer.RestoreRows([2]);
@@ -102,7 +101,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void The_lists_are_cached_until_something_changes()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(20), "bulk.csv");
 
         Assert.Same(importer.VisibleReviewRows, importer.VisibleReviewRows);
@@ -113,7 +112,7 @@ public sealed class ScaleTests : BunitContext
 
         var before = importer.AllRows;
         var visibleBefore = importer.VisibleReviewRows;
-        importer.EditCell(0, "email", "bad");
+        importer.EditCell(0, "Email", "bad");
 
         Assert.NotSame(visibleBefore, importer.VisibleReviewRows);
         Assert.Equal(20, before.Count);
@@ -129,24 +128,24 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void Changing_a_key_updates_the_rows_that_share_the_old_and_the_new_key()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "code",
-            Duplicates = SpreadsheetDuplicatesPolicy.Error,
-            Columns = [new SpreadsheetColumnSchema { Key = "code" }],
-        });
+            sb.Duplicates = SpreadsheetDuplicatesPolicy.Error;
+            var colCode = sb.Column(r => r.Code);
+            sb.RowKey(colCode);
+        }));
         importer.LoadText("Code\nA\nB\na\nC", "keys.csv");
         Assert.Equal([0, 2], importer.InvalidRows.Select(r => r.Index));
         Assert.Contains("row 4", importer.AllRows[0].Issues[0].Message, StringComparison.Ordinal);
 
-        importer.EditCell(2, "code", "B");                  // leaves the group of "a", joins the group of "b"
+        importer.EditCell(2, "Code", "B");                  // leaves the group of "a", joins the group of "b"
         Assert.Equal([1, 2], importer.InvalidRows.Select(r => r.Index));
         Assert.Empty(importer.AllRows[0].Issues);
 
-        importer.EditCell(0, "code", "C");                  // a third key shared by rows 0 and 3
+        importer.EditCell(0, "Code", "C");                  // a third key shared by rows 0 and 3
         Assert.Equal([0, 1, 2, 3], importer.InvalidRows.Select(r => r.Index));
 
-        importer.EditCell(1, "code", "");                   // an empty key is no key
+        importer.EditCell(1, "Code", "");                   // an empty key is no key
         Assert.Equal([0, 3], importer.InvalidRows.Select(r => r.Index));
         Assert.Contains("row 5", importer.AllRows[0].Issues[0].Message, StringComparison.Ordinal);
     }
@@ -156,21 +155,21 @@ public sealed class ScaleTests : BunitContext
     [InlineData(SpreadsheetDuplicatesPolicy.KeepLast, new[] { 0, 1 })]
     public void Keep_first_and_keep_last_follow_key_edits(SpreadsheetDuplicatesPolicy policy, int[] discardedAfterEdit)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "code",
-            Duplicates = policy,
-            Columns = [new SpreadsheetColumnSchema { Key = "code" }],
-        });
+            sb.Duplicates = policy;
+            var colCode = sb.Column(r => r.Code);
+            sb.RowKey(colCode);
+        }));
         importer.LoadText("Code\nA\nA\nB\nB", "keys.csv");
         Assert.Equal(2, importer.DiscardedRows.Count);
 
-        importer.EditCell(2, "code", "A");                  // A is now held by rows 0, 1, 2 and B by row 3
+        importer.EditCell(2, "Code", "A");                  // A is now held by rows 0, 1, 2 and B by row 3
         var expected = policy == SpreadsheetDuplicatesPolicy.KeepFirst ? new[] { 1, 2 } : new[] { 0, 1 };
         Assert.Equal(expected, importer.DiscardedRows.Select(r => r.Index));
         Assert.All(importer.DiscardedRows, r => Assert.Equal(SpreadsheetDiscardReason.Duplicate, r.DiscardReason));
 
-        importer.EditCell(1, "code", "B");
+        importer.EditCell(1, "Code", "B");
         Assert.Equal(discardedAfterEdit, importer.DiscardedRows.Select(r => r.Index));
     }
 
@@ -181,24 +180,22 @@ public sealed class ScaleTests : BunitContext
     [InlineData(SpreadsheetDuplicatesPolicy.KeepLast, SpreadsheetExistingAction.Error, 3)]
     public void Incremental_updates_match_a_full_pass_over_the_same_state(SpreadsheetDuplicatesPolicy duplicates, SpreadsheetExistingAction existing, int seed)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "code",
-            Duplicates = duplicates,
-            ExistingAction = existing,
-            ExistingRecords = new Dictionary<string, IReadOnlyDictionary<string, object?>>
+            sb.Duplicates = duplicates;
+            sb.ExistingAction = existing;
+            sb.ExistingRecords = new Dictionary<string, ImportRow>
             {
-                ["B"] = new Dictionary<string, object?>(),
-                ["d"] = new Dictionary<string, object?>(),
-            },
-            MaxRows = 35,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "code", Required = true },
-                new SpreadsheetColumnSchema { Key = "amount", Kind = SpreadsheetColumnKind.Number, Rules = [SpreadsheetRule.Max(100, level: SpreadsheetIssueLevel.Warning)] },
-                new SpreadsheetColumnSchema { Key = "level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("g", "Gold"), new SpreadsheetOption("s", "Silver")] },
-            ],
-        });
+                ["B"] = new ImportRow(),
+                ["d"] = new ImportRow(),
+            };
+            sb.MaxRows = 35;
+            var colCode = sb.Column(r => r.Code, col => col.Required());
+            sb.Column(r => r.Amount, col => col.Rule(SpreadsheetRule.Max(100d, level: SpreadsheetIssueLevel.Warning)));
+            sb.Column(r => r.Level, col => col
+                .Options([new SpreadsheetOption<string?>("g", "Gold"), new SpreadsheetOption<string?>("s", "Silver")]));
+            sb.RowKey(colCode);
+        }));
         var random = new Random(seed);
         string[] codes = ["A", "B", "C", "D", "a", "b", "d", ""];
         string[] levels = ["Gold", "gold", "Silver", "Bronze", "zzz", "Platinum", ""];
@@ -211,9 +208,9 @@ public sealed class ScaleTests : BunitContext
             var row = random.Next(40);
             switch (random.Next(8))
             {
-                case 0: importer.EditCell(row, "code", codes[random.Next(codes.Length)]); break;
-                case 1: importer.EditCell(row, "amount", random.Next(3) == 0 ? "x" : random.Next(0, 150).ToString(CultureInfo.InvariantCulture)); break;
-                case 2: importer.EditCell(row, "level", levels[random.Next(levels.Length)]); break;
+                case 0: importer.EditCell(row, "Code", codes[random.Next(codes.Length)]); break;
+                case 1: importer.EditCell(row, "Amount", random.Next(3) == 0 ? "x" : random.Next(0, 150).ToString(CultureInfo.InvariantCulture)); break;
+                case 2: importer.EditCell(row, "Level", levels[random.Next(levels.Length)]); break;
                 case 3: importer.RevertCell(row, random.Next(3) switch { 0 => "code", 1 => "amount", _ => "level" }); break;
                 case 4: importer.DiscardRows([row, random.Next(40)]); break;
                 case 5: importer.RestoreRows([row]); break;
@@ -241,13 +238,13 @@ public sealed class ScaleTests : BunitContext
         }
     }
 
-    private static string Snapshot(SpreadsheetImporter importer)
+    private static string Snapshot(SpreadsheetImporter<ImportRow> importer)
     {
         var sb = new StringBuilder();
         foreach (var row in importer.AllRows)
         {
             sb.Append(row.Index).Append('|').Append(row.RowNumber).Append('|').Append(row.Status).Append('|').Append(row.DiscardReason).Append('|').Append(row.Mode).Append('|').Append(row.Importable).Append('|').Append(row.Edited).Append('|');
-            sb.AppendJoin(',', row.Data.Select(kv => $"{kv.Key}={kv.Value}")).Append('|');
+            sb.Append(System.Text.Json.JsonSerializer.Serialize(importer.ToTyped(row).Value)).Append('|');
             sb.AppendJoin(',', row.Cells.Select(kv => $"{kv.Key}:{kv.Value.Text}/{kv.Value.DisplayText}/{kv.Value.Edited}/{kv.Value.Issue?.Code}")).Append('|');
             sb.AppendJoin(';', row.Issues.Select(i => $"{i.Field}/{i.Code}/{i.Level}/{i.Message}")).AppendLine();
         }
@@ -263,18 +260,15 @@ public sealed class ScaleTests : BunitContext
     public void Answering_a_value_reads_only_the_rows_that_hold_it()
     {
         var parsed = 0;
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "name", CustomParse = s => { parsed++; return s; } },
-                new SpreadsheetColumnSchema { Key = "level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A")] },
-            ],
-        });
+            sb.Column(r => r.Name, col => col.Parser(s => { parsed++; return SpreadsheetParseResult<string?>.Ok(s); }));
+            sb.Column(r => r.Level, col => col.Options([new SpreadsheetOption<string?>("a", "A")]));
+        }));
         importer.LoadText("Name;Level\n" + string.Join('\n', Enumerable.Range(0, 500).Select(i => $"n{i};{(i % 100 == 0 ? "weird" : "A")}")), "levels.csv");
         var loaded = parsed;
 
-        importer.AnswerValue("level", "weird", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "a", "A"));
+        importer.AnswerValue("Level", "weird", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "a", "A"));
 
         Assert.Equal(loaded + 5, parsed);                    // the five rows that hold "weird"
         Assert.Empty(importer.OpenQuestions);
@@ -284,23 +278,25 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void An_answer_for_a_value_without_a_question_still_applies()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [new SpreadsheetColumnSchema { Key = "level", Kind = SpreadsheetColumnKind.Select, UnknownPolicy = SpreadsheetUnknownValuePolicy.Error, Options = [new SpreadsheetOption("a", "A")] }],
-        });
+            sb.Column(r => r.Level, col => col
+                .UnknownPolicy(SpreadsheetUnknownValuePolicy.Error)
+                .Options([new SpreadsheetOption<string?>("a", "A")]));
+        }));
         importer.LoadText("Level\nweird\nA", "levels.csv");
         Assert.False(importer.AllRows[0].Importable);
 
-        importer.AnswerValue("level", "weird", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "a", "A"));
+        importer.AnswerValue("Level", "weird", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "a", "A"));
 
         Assert.True(importer.AllRows[0].Importable);
-        Assert.Equal("a", importer.AllRows[0].Data["level"]);
+        Assert.Equal("a", importer.Value(0).Level);
     }
 
     [Fact]
     public void The_review_is_paged_and_the_page_follows_the_filters()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(120), "bulk.csv");
 
         Assert.Equal(SpreadsheetImporter.DefaultReviewPageSize, importer.ReviewPageSize);
@@ -335,7 +331,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void The_page_stays_inside_the_rows_when_they_shrink_and_an_empty_review_has_one_page()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(60), "bulk.csv");
         importer.SetReviewPage(1);
         importer.DiscardRows(Enumerable.Range(10, 50));
@@ -351,7 +347,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void A_default_row_limit_leaves_out_the_rows_past_it_and_the_schema_limit_wins()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(30), "bulk.csv");
         Assert.Null(importer.EffectiveMaxRows);
         Assert.Equal(0, importer.LimitedRowCount);
@@ -365,7 +361,7 @@ public sealed class ScaleTests : BunitContext
         importer.DefaultMaxRows = null;
         Assert.Equal(30, importer.ImportableRows.Count);
 
-        var schemaLimited = new SpreadsheetImporter(BulkSchema(maxRows: 5)) { DefaultMaxRows = 25 };
+        var schemaLimited = new SpreadsheetImporter<ImportRow>(BulkSchema(maxRows: 5)) { DefaultMaxRows = 25 };
         schemaLimited.LoadText(BulkCsv(30), "bulk.csv");
         Assert.Equal(5, schemaLimited.EffectiveMaxRows);
         Assert.Equal(25, schemaLimited.LimitedRowCount);
@@ -373,7 +369,7 @@ public sealed class ScaleTests : BunitContext
 
     // The component
 
-    private IRenderedComponent<KlySpreadsheetImport> RenderReview(SpreadsheetImporter importer, Action<ComponentParameterCollectionBuilder<KlySpreadsheetImport>>? parameters = null)
+    private IRenderedComponent<KlySpreadsheetImport> RenderReview(SpreadsheetImporter<ImportRow> importer, Action<ComponentParameterCollectionBuilder<KlySpreadsheetImport>>? parameters = null)
     {
         importer.NextStep();
         return Render<KlySpreadsheetImport>(p =>
@@ -386,7 +382,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void The_review_table_renders_one_page_and_a_keyboard_pager_moves_between_pages()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(120), "bulk.csv");
         var cut = RenderReview(importer);
 
@@ -414,7 +410,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void The_page_size_parameter_sets_the_rows_per_page_and_a_users_choice_survives_a_rerender()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(60), "bulk.csv");
         var cut = RenderReview(importer, p => p.Add(x => x.PageSize, 20));
         Assert.Equal(20, cut.FindAll("[data-slot=spreadsheet-row]").Count);
@@ -427,7 +423,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void Select_all_selects_the_rows_of_the_page()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(120), "bulk.csv");
         var cut = RenderReview(importer);
 
@@ -439,7 +435,7 @@ public sealed class ScaleTests : BunitContext
     [Fact]
     public void The_component_applies_a_default_row_limit_and_says_how_many_rows_it_left_out()
     {
-        var importer = new SpreadsheetImporter(BulkSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema());
         importer.LoadText(BulkCsv(30), "bulk.csv");
         var cut = RenderReview(importer, p => p.Add(x => x.MaxRows, 12));
 
@@ -458,7 +454,7 @@ public sealed class ScaleTests : BunitContext
     public void The_default_row_limit_of_the_component_is_ten_thousand_and_the_schema_limit_wins()
     {
         Assert.Equal(10_000, KlySpreadsheetImport.DefaultMaxRows);
-        var importer = new SpreadsheetImporter(BulkSchema(maxRows: 7));
+        var importer = new SpreadsheetImporter<ImportRow>(BulkSchema(maxRows: 7));
         importer.LoadText(BulkCsv(30), "bulk.csv");
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 

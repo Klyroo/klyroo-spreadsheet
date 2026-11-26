@@ -16,19 +16,19 @@ public sealed class SubmitResumeTests : BunitContext
 
     private static string Csv(int rows) => "Name\n" + string.Join('\n', Enumerable.Range(0, rows).Select(i => $"row{i}"));
 
-    private static SpreadsheetImporter NewImporter(
-        Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmitAsync = null,
-        Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null,
+    private static SpreadsheetImporter<ImportRow> NewImporter(
+        Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmitAsync = null,
+        Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null,
         int batchSize = 2,
         int rows = 6)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            BatchSize = batchSize,
-            OnSubmit = onSubmit,
-            OnSubmitAsync = onSubmitAsync,
-            Columns = [new SpreadsheetColumnSchema { Key = "name" }],
-        });
+            sb.BatchSize = batchSize;
+            sb.OnSubmit = onSubmit;
+            sb.OnSubmitAsync = onSubmitAsync;
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText(Csv(rows), "names.csv");
         return importer;
     }
@@ -91,7 +91,7 @@ public sealed class SubmitResumeTests : BunitContext
     public async Task Cancelling_stops_before_the_next_batch_and_a_later_submit_resumes()
     {
         var sent = new List<int>();
-        SpreadsheetImporter? importer = null;
+        SpreadsheetImporter<ImportRow>? importer = null;
         importer = NewImporter(onSubmitAsync: (rows, token) =>
         {
             sent.AddRange(rows.Select(r => r.Index));
@@ -242,7 +242,7 @@ public sealed class SubmitResumeTests : BunitContext
         await importer.SubmitAsync(Token);
         Assert.Equal(1, importer.RejectedCount);
 
-        importer.EditCell(1, "name", "fixed");
+        importer.EditCell(1, "Name", "fixed");
         Assert.Equal(0, importer.RejectedCount);
         await importer.SubmitAsync(Token);
 
@@ -255,20 +255,15 @@ public sealed class SubmitResumeTests : BunitContext
     {
         var sent = 0;
         var attempts = 0;
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => { sent += rows.Count; return Accepted(); },
-            Columns =
-            [
-                new SpreadsheetColumnSchema
-                {
-                    Key = "level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A")],
-                    OnCreateOption = text => attempts++ == 0 ? throw new InvalidOperationException("no") : new SpreadsheetOption(text.ToLowerInvariant(), text),
-                },
-            ],
-        });
+            sb.OnSubmit = rows => { sent += rows.Count; return Accepted(); };
+            sb.Column(r => r.Level, col => col
+                .Options([new SpreadsheetOption<string?>("a", "A")])
+                .OnCreateOption(text => attempts++ == 0 ? throw new InvalidOperationException("no") : new SpreadsheetOption<string?>(text.ToLowerInvariant(), text)));
+        }));
         importer.LoadText("Level\nZ\nA", "levels.csv");
-        importer.AnswerValue("level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
         await importer.SubmitAsync(Token);
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);

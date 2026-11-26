@@ -30,17 +30,15 @@ public sealed class FilesAndSubmitTests
         return stream;
     }
 
-    private static SpreadsheetSchema PriceSchema(char decimalSeparator = ',', Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null) => new()
-    {
-        Key = "prices",
-        OnSubmit = onSubmit,
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "product", Label = "Product", Required = true },
-            new SpreadsheetColumnSchema { Key = "price", Label = "Price", Kind = SpreadsheetColumnKind.Number, DecimalSeparator = decimalSeparator },
-            new SpreadsheetColumnSchema { Key = "since", Label = "Since", Kind = SpreadsheetColumnKind.Date },
-        ]
-    };
+    private static SpreadsheetSchema<ImportRow> PriceSchema(char decimalSeparator = ',', Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null) =>
+        SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Key = "prices";
+            sb.OnSubmit = onSubmit;
+            sb.Column(r => r.Product, col => col.Label("Product").Required());
+            sb.Column(r => r.Price, col => col.Label("Price").DecimalSeparator(decimalSeparator));
+            sb.Column(r => r.Since, col => col.Label("Since"));
+        });
 
     [Fact]
     public void XlsxReader_reads_shared_strings_numbers_dates_and_every_sheet()
@@ -58,25 +56,25 @@ public sealed class FilesAndSubmitTests
     [Fact]
     public async Task LoadFileAsync_imports_an_xlsx_whatever_the_decimal_mark_of_the_column()
     {
-        var importer = new SpreadsheetImporter(PriceSchema(decimalSeparator: ','));
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema(decimalSeparator: ','));
 
         await importer.LoadFileAsync(BuildXlsx(), "prices.xlsx", cancellationToken: TestContext.Current.CancellationToken);
 
         var row = Assert.Single(importer.AllRows);
         Assert.Empty(row.Issues);
-        Assert.Equal(1234.5, row.Data["price"]);
-        Assert.Equal("2025-01-01", row.Data["since"]);
+        Assert.Equal(1234.5, importer.Value(0).Price);
+        Assert.Equal(new DateOnly(2025, 1, 1), importer.Value(0).Since);
         Assert.Equal(3, row.RowNumber);
     }
 
     [Fact]
     public async Task LoadFileAsync_decodes_latin1_text_and_refuses_xls_and_oversized_files()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
         var latin1 = Encoding.Latin1.GetBytes("Product;Price\nCafé;12,50");
 
         await importer.LoadFileAsync(new MemoryStream(latin1), "prices.csv", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("Café", importer.AllRows[0].Data["product"]);
+        Assert.Equal("Café", importer.Value(0).Product);
 
         await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream([1, 2]), "old.xls", cancellationToken: TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream(new byte[2048]), "big.csv", maxBytes: 1024, cancellationToken: TestContext.Current.CancellationToken));
@@ -86,7 +84,7 @@ public sealed class FilesAndSubmitTests
     public async Task SubmitAsync_does_nothing_without_importable_rows()
     {
         var sent = 0;
-        var importer = new SpreadsheetImporter(PriceSchema(onSubmit: rows => { sent += rows.Count; return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null); }));
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema(onSubmit: rows => { sent += rows.Count; return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null); }));
 
         await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
 
@@ -98,7 +96,7 @@ public sealed class FilesAndSubmitTests
     public async Task ImportedCount_adds_the_rows_a_retry_gets_accepted()
     {
         var rejectFirst = true;
-        var importer = new SpreadsheetImporter(PriceSchema(onSubmit: rows =>
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema(onSubmit: rows =>
         {
             IReadOnlyList<SpreadsheetRejectedRow>? rejected = rejectFirst ? [new(rows[0].Index, "Server busy")] : null;
             rejectFirst = false;
@@ -118,27 +116,22 @@ public sealed class FilesAndSubmitTests
     {
         var created = 0;
         var sentLevels = new List<object?>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "people",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "name", Label = "Name" },
-                new SpreadsheetColumnSchema
-                {
-                    Key = "level", Label = "Level", Kind = SpreadsheetColumnKind.Select,
-                    Options = [new SpreadsheetOption("b1", "B1")],
-                    OnCreateOption = text => { created++; return new SpreadsheetOption("lvl-" + text.ToLowerInvariant(), text); },
-                },
-            ],
-            OnSubmit = rows =>
+            sb.Key = "people";
+            sb.OnSubmit = rows =>
             {
-                sentLevels.AddRange(rows.Select(r => r.Data["level"]));
+                sentLevels.AddRange(rows.Select(r => r.Value.Level));
                 return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>([new(rows[0].Index, "retry me")]);
-            },
-        });
+            };
+            sb.Column(r => r.Name, col => col.Label("Name"));
+            sb.Column(r => r.Level, col => col
+                .Label("Level")
+                .Options([new SpreadsheetOption<string?>("b1", "B1")])
+                .OnCreateOption(text => { created++; return new SpreadsheetOption<string?>("lvl-" + text.ToLowerInvariant(), text); }));
+        }));
         importer.LoadText("Name;Level\nAda;C2\nBob;C2", "people.csv");
-        importer.AnswerValue("level", "C2", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Level", "C2", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
         await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
         await importer.RetryRejectedAsync(Xunit.TestContext.Current.CancellationToken);
@@ -150,7 +143,7 @@ public sealed class FilesAndSubmitTests
     [Fact]
     public void A_skipped_columns_step_can_be_reopened_from_a_later_step()
     {
-        var importer = new SpreadsheetImporter(PriceSchema());
+        var importer = new SpreadsheetImporter<ImportRow>(PriceSchema());
         importer.LoadText("Product;Price\nA;1", "p.csv");
         Assert.True(importer.NextStep());
         Assert.Equal("review", importer.CurrentStepKey);

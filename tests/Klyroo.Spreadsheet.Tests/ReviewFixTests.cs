@@ -16,7 +16,6 @@ public sealed class ReviewFixTests : BunitContext
 
     private static CancellationToken Token => Xunit.TestContext.Current.CancellationToken;
     private static Task<IReadOnlyList<SpreadsheetRejectedRow>?> Ok() => Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null);
-    private static SpreadsheetColumnSchema Col(string key) => new() { Key = key };
 
     private static SpreadsheetIndexedIssue Bad(SpreadsheetRow row) =>
         new(row.Index, new SpreadsheetRowIssue("sku", "nope", SpreadsheetIssueLevel.Error, "unknown sku"));
@@ -28,16 +27,16 @@ public sealed class ReviewFixTests : BunitContext
     {
         var calls = 0;
         var sent = new List<string?>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "sku",
-            ExistingAction = SpreadsheetExistingAction.Skip,
-            OnSubmit = rows => { sent.AddRange(rows.Select(r => (string?)r.Data["sku"])); return Ok(); },
-            Columns = [Col("sku")],
-            LookupExistingRecordsAsync = (keys, ct) => calls++ == 0
+            sb.ExistingAction = SpreadsheetExistingAction.Skip;
+            sb.OnSubmit = rows => { sent.AddRange(rows.Select(r => r.Value.Sku)); return Ok(); };
+            sb.LookupExistingRecordsAsync = (keys, ct) => calls++ == 0
                 ? throw new InvalidOperationException("network")
-                : Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>(keys.ToDictionary(k => k, k => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>())),
-        });
+                : Task.FromResult<IReadOnlyDictionary<string, ImportRow>>(keys.ToDictionary(k => k, k => new ImportRow()));
+            var colSku = sb.Column(r => r.Sku);
+            sb.RowKey(colSku);
+        }));
         importer.LoadText("Sku\nA\nB", "s.csv");
 
         await importer.SubmitAsync(Token);
@@ -53,19 +52,19 @@ public sealed class ReviewFixTests : BunitContext
     public async Task A_resubmit_after_a_cancelled_validation_validates_again()
     {
         var calls = 0;
-        SpreadsheetImporter? importer = null;
+        SpreadsheetImporter<ImportRow>? importer = null;
         var sent = new List<string?>();
-        importer = new SpreadsheetImporter(new SpreadsheetSchema
+        importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => { sent.AddRange(rows.Select(r => (string?)r.Data["sku"])); return Ok(); },
-            Columns = [Col("sku")],
-            ValidateRowsAsync = (rows, ct) =>
+            sb.OnSubmit = rows => { sent.AddRange(rows.Select(r => r.Value.Sku)); return Ok(); };
+            sb.ValidateRowsAsync = (rows, ct) =>
             {
                 if (calls++ == 0) importer!.CancelSubmit();
                 ct.ThrowIfCancellationRequested();
-                return Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => (string?)r.Data["sku"] == "B").Select(Bad).ToList());
-            },
-        });
+                return Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => r.Value.Sku == "B").Select(Bad).ToList());
+            };
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA\nB", "s.csv");
 
         await importer.SubmitAsync(Token);
@@ -82,16 +81,16 @@ public sealed class ReviewFixTests : BunitContext
     {
         var gate = new TaskCompletionSource();
         var sent = new List<string?>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => { sent.AddRange(rows.Select(r => (string?)r.Data["sku"])); return Ok(); },
-            Columns = [Col("sku")],
-            ValidateRowsAsync = async (rows, ct) =>
+            sb.OnSubmit = rows => { sent.AddRange(rows.Select(r => r.Value.Sku)); return Ok(); };
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
                 await gate.Task;
                 return rows.Select(Bad).ToList();
-            },
-        });
+            };
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA\nB", "s.csv");
 
         var validation = importer.ValidateAsync(Token);
@@ -109,16 +108,16 @@ public sealed class ReviewFixTests : BunitContext
     public async Task The_component_disables_Import_while_a_check_runs()
     {
         var gate = new TaskCompletionSource();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => Ok(),
-            Columns = [Col("sku")],
-            ValidateRowsAsync = async (rows, ct) =>
+            sb.OnSubmit = rows => Ok();
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
                 await gate.Task;
                 return null;
-            },
-        });
+            };
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA", "s.csv");
         importer.NextStep();
         importer.NextStep();
@@ -139,20 +138,20 @@ public sealed class ReviewFixTests : BunitContext
     {
         var gate = new TaskCompletionSource();
         var checkedSkus = new List<string?>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [Col("sku")],
-            ValidateRowsAsync = async (rows, ct) =>
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
-                checkedSkus.AddRange(rows.Select(r => (string?)r.Data["sku"]));
+                checkedSkus.AddRange(rows.Select(r => r.Value.Sku));
                 await gate.Task;
-                return rows.Where(r => (string?)r.Data["sku"] == "BAD").Select(Bad).ToList();
-            },
-        });
+                return rows.Where(r => r.Value.Sku == "BAD").Select(Bad).ToList();
+            };
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nBAD\nOK", "s.csv");
 
         var run = importer.ValidateAsync(Token);
-        importer.EditCell(0, "sku", "FIXED");
+        importer.EditCell(0, "Sku", "FIXED");
         gate.SetResult();
         await run;
 
@@ -167,19 +166,20 @@ public sealed class ReviewFixTests : BunitContext
     public async Task A_new_read_of_the_file_during_a_run_invalidates_its_results()
     {
         var gate = new TaskCompletionSource();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [Col("sku"), Col("other")],
-            ValidateRowsAsync = async (rows, ct) =>
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
                 await gate.Task;
                 return rows.Select(Bad).ToList();
-            },
-        });
+            };
+            sb.Column(r => r.Sku);
+            sb.Column(r => r.Other);
+        }));
         importer.LoadText("Sku;Other\nA;1\nB;2", "s.csv");
 
         var run = importer.ValidateAsync(Token);
-        importer.IgnoreColumn("other");                           // a column choice reads every row again
+        importer.IgnoreColumn("Other");                           // a column choice reads every row again
         gate.SetResult();
         await run;
 
@@ -193,16 +193,16 @@ public sealed class ReviewFixTests : BunitContext
     public async Task Raising_the_row_limit_marks_the_checks_dirty_for_the_rows_it_takes_in()
     {
         var looked = new List<string>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "sku",
-            Columns = [Col("sku")],
-            LookupExistingRecordsAsync = (keys, ct) =>
+            sb.LookupExistingRecordsAsync = (keys, ct) =>
             {
                 looked.AddRange(keys);
-                return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>(new Dictionary<string, IReadOnlyDictionary<string, object?>>());
-            },
-        }) { DefaultMaxRows = 1 };
+                return Task.FromResult<IReadOnlyDictionary<string, ImportRow>>(new Dictionary<string, ImportRow>());
+            };
+            var colSku = sb.Column(r => r.Sku);
+            sb.RowKey(colSku);
+        })) { DefaultMaxRows = 1 };
         importer.LoadText("Sku\nA\nB", "s.csv");
         await importer.ValidateAsync(Token);
         Assert.False(importer.NeedsAsyncValidation);
@@ -216,13 +216,14 @@ public sealed class ReviewFixTests : BunitContext
 
     // 5. Accepted rows are final
 
-    private static async Task<SpreadsheetImporter> Imported()
+    private static async Task<SpreadsheetImporter<ImportRow>> Imported()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => Ok(),
-            Columns = [Col("sku"), Col("level")],
-        });
+            sb.OnSubmit = rows => Ok();
+            sb.Column(r => r.Sku);
+            sb.Column(r => r.Level);
+        }));
         importer.LoadText("Sku;Level\nA;1\nB;2", "s.csv");
         await importer.SubmitAsync(Token);
         return importer;
@@ -236,13 +237,13 @@ public sealed class ReviewFixTests : BunitContext
         var changed = 0;
         importer.Changed += () => changed++;
 
-        importer.EditCell(0, "sku", "A2");
-        importer.RevertCell(0, "sku");
+        importer.EditCell(0, "Sku", "A2");
+        importer.RevertCell(0, "Sku");
         importer.DiscardRows([0, 1]);
         importer.RestoreRows([0]);
 
         Assert.Equal(0, changed);
-        Assert.Equal("A", importer.AllRows[0].Data["sku"]);
+        Assert.Equal("A", importer.Value(0).Sku);
         Assert.Empty(importer.DiscardedRows);
         Assert.True(importer.IsRowAccepted(0));
         Assert.Empty(importer.PendingRows);
@@ -255,19 +256,19 @@ public sealed class ReviewFixTests : BunitContext
         var importer = await Imported();
         Assert.True(importer.MappingLocked);
 
-        importer.IgnoreColumn("level");
-        importer.AssignColumn("level", 0);
-        importer.ResetColumn("level");
-        importer.AnswerValue("level", "1", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.LeaveEmpty));
+        importer.IgnoreColumn("Level");
+        importer.AssignColumn("Level", 0);
+        importer.ResetColumn("Level");
+        importer.AnswerValue("Level", "1", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.LeaveEmpty));
         importer.SetHeaderRow(1);
-        Assert.Equal("Level", importer.Fields.Single(f => f.Column.Key == "level").HeaderText);
-        Assert.Equal("1", importer.AllRows[0].Data["level"]);
+        Assert.Equal("Level", importer.Fields.Single(f => f.Column.Key == "Level").HeaderText);
+        Assert.Equal("1", importer.Value(0).Level);
         Assert.Equal(0, importer.ApplyMappingProfile(new SpreadsheetMappingProfile { Columns = new Dictionary<string, string> { ["level"] = "sku" } }).ColumnsApplied);
 
         importer.ResetSubmit();
         Assert.False(importer.MappingLocked);
-        importer.IgnoreColumn("level");
-        Assert.Equal(SpreadsheetColumnStatus.Unmatched, importer.Fields.Single(f => f.Column.Key == "level").Status);
+        importer.IgnoreColumn("Level");
+        Assert.Equal(SpreadsheetColumnStatus.Unmatched, importer.Fields.Single(f => f.Column.Key == "Level").Status);
     }
 
     [Fact]
@@ -275,27 +276,27 @@ public sealed class ReviewFixTests : BunitContext
     {
         var gate = new TaskCompletionSource();
         var sentSkus = new List<string?>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmitAsync = async (rows, ct) =>
+            sb.OnSubmitAsync = async (rows, ct) =>
             {
-                sentSkus.AddRange(rows.Select(r => (string?)r.Data["sku"]));
+                sentSkus.AddRange(rows.Select(r => r.Value.Sku));
                 await gate.Task;
                 return null;
-            },
-            Columns = [Col("sku")],
-        });
+            };
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA", "s.csv");
 
         var submit = importer.SubmitAsync(Token);
-        importer.EditCell(0, "sku", "CHANGED");
+        importer.EditCell(0, "Sku", "CHANGED");
         importer.DiscardRows([0]);
-        importer.IgnoreColumn("sku");
+        importer.IgnoreColumn("Sku");
         gate.SetResult();
         await submit;
 
         Assert.Equal(["A"], sentSkus);
-        Assert.Equal("A", importer.AllRows[0].Data["sku"]);       // the accepted row still holds what was sent
+        Assert.Equal("A", importer.Value(0).Sku);       // the accepted row still holds what was sent
         Assert.True(importer.IsRowAccepted(0));
     }
 
@@ -327,7 +328,10 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public async Task The_submit_button_is_not_offered_when_nothing_is_pending()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [Col("sku")] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA", "s.csv");
         importer.NextStep();
         importer.NextStep();
@@ -343,27 +347,35 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public void Duplicate_headers_are_mapped_by_occurrence_when_a_profile_is_applied_again()
     {
-        var schema = new SpreadsheetSchema { Columns = [Col("updated"), Col("created")] };
-        var first = new SpreadsheetImporter(schema);
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.Updated, col => col.Key("updated"));
+            sb.Column(r => r.Created, col => col.Key("created"));
+        });
+        var first = new SpreadsheetImporter<ImportRow>(schema);
         first.LoadText("Date,Date,Name\n2020,2021,x", "d.csv");
         first.AssignColumn("created", 0);
         first.AssignColumn("updated", 1);
 
         var profile = SpreadsheetMappingProfile.FromJson(first.GetMappingProfile().ToJson())!;
-        var second = new SpreadsheetImporter(schema) { SavedMapping = profile };
+        var second = new SpreadsheetImporter<ImportRow>(schema) { SavedMapping = profile };
         second.LoadText("Date,Date,Name\n2020,2021,x", "d.csv");
 
         Assert.Equal("date", profile.Columns.Keys.Single());
         Assert.Equal("updated", profile.RepeatedColumns["2:date"]);
-        Assert.Equal("2021", second.AllRows[0].Data["updated"]);
-        Assert.Equal("2020", second.AllRows[0].Data["created"]);
+        Assert.Equal("2021", second.Value(0).Updated);
+        Assert.Equal("2020", second.Value(0).Created);
         Assert.True(second.SavedMappingApplied);
     }
 
     [Fact]
     public void A_profile_with_a_repeated_header_does_not_match_a_file_that_has_it_once()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [Col("updated"), Col("created")] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.Updated, col => col.Key("updated"));
+            sb.Column(r => r.Created, col => col.Key("created"));
+        }));
         importer.LoadText("Date,Name\n2020,x", "d.csv");
         var profile = new SpreadsheetMappingProfile
         {
@@ -380,7 +392,10 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public void Null_keys_and_values_in_a_stored_profile_are_ignored_without_an_exception()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [Col("sku")] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.Sku);
+        }));
         importer.LoadText("Sku\nA", "s.csv");
         var profile = SpreadsheetMappingProfile.FromJson("""
             { "version": 1, "columns": { "sku": null }, "repeatedColumns": { "2:sku": null }, "ignoredColumns": [ null, "" ],
@@ -390,31 +405,28 @@ public sealed class ReviewFixTests : BunitContext
         Assert.Null(Record.Exception(() => importer.ApplyMappingProfile(profile)));
         Assert.Null(Record.Exception(() => importer.SavedMapping = profile));
         Assert.Null(Record.Exception(() => importer.MatchesMappingProfile(profile)));
-        Assert.Equal("A", importer.AllRows[0].Data["sku"]);
+        Assert.Equal("A", importer.Value(0).Sku);
     }
 
     [Fact]
     public void A_stored_answer_must_fit_the_column_and_have_a_defined_action()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("pro", "Pro")] },
-                Col("note"),
-            ],
-        });
+            sb.Column(r => r.Level, col => col.Options([new SpreadsheetOption<string?>("pro", "Pro")]));
+            sb.Column(r => r.Note);
+        }));
         importer.LoadText("Level;Note\nGold;x", "s.csv");
         var profile = new SpreadsheetMappingProfile
         {
             ValueAnswers = new Dictionary<string, SpreadsheetValueAnswer>
             {
-                ["level::gold"] = new(SpreadsheetValueAnswerAction.Map, "not-an-option", "x"),        // not one of the options
-                ["level::silver"] = new(SpreadsheetValueAnswerAction.Map, null, null),
-                ["level::bronze"] = new(SpreadsheetValueAnswerAction.Create),                          // the column cannot create options
-                ["level::tin"] = new((SpreadsheetValueAnswerAction)42),                                // undefined action
-                ["note::x"] = new(SpreadsheetValueAnswerAction.Map, "pro", "Pro"),                     // not a select column
-                ["level::platinum"] = new(SpreadsheetValueAnswerAction.Map, "pro", "Pro"),             // valid
+                ["Level::gold"] = new(SpreadsheetValueAnswerAction.Map, "not-an-option", "x"),        // not one of the options
+                ["Level::silver"] = new(SpreadsheetValueAnswerAction.Map, null, null),
+                ["Level::bronze"] = new(SpreadsheetValueAnswerAction.Create),                          // the column cannot create options
+                ["Level::tin"] = new((SpreadsheetValueAnswerAction)42),                                // undefined action
+                ["Note::x"] = new(SpreadsheetValueAnswerAction.Map, "pro", "Pro"),                     // not a select column
+                ["Level::platinum"] = new(SpreadsheetValueAnswerAction.Map, "pro", "Pro"),             // valid
             },
         };
 
@@ -428,15 +440,17 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public void A_stored_create_answer_is_kept_for_a_column_that_can_create_options()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [new SpreadsheetColumnSchema { Key = "level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("pro", "Pro")], OnCreateOption = t => new SpreadsheetOption(t, t) }],
-        });
+            sb.Column(r => r.Level, col => col
+                .Options([new SpreadsheetOption<string?>("pro", "Pro")])
+                .OnCreateOption(t => new SpreadsheetOption<string?>(t, t)));
+        }));
         importer.LoadText("Level\nGold", "s.csv");
 
         var result = importer.ApplyMappingProfile(new SpreadsheetMappingProfile
         {
-            ValueAnswers = new Dictionary<string, SpreadsheetValueAnswer> { ["level::gold"] = new(SpreadsheetValueAnswerAction.Create) },
+            ValueAnswers = new Dictionary<string, SpreadsheetValueAnswer> { ["Level::gold"] = new(SpreadsheetValueAnswerAction.Create) },
         });
 
         Assert.Equal(1, result.ValueAnswersApplied);
@@ -447,22 +461,25 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public void The_template_guards_formulas_and_escapes_quotes()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "a", Label = "=HYPERLINK(\"x\")", Example = "@SUM(A1)" },
-                new SpreadsheetColumnSchema { Key = "b", Label = "He said \"hi\"", Example = "say \"yes\"" },
-                new SpreadsheetColumnSchema { Key = "c", Label = "+cmd", Example = "-5" },
-            ],
-        });
+            sb.Column(r => r.A, col => col.Label("=HYPERLINK(\"x\")").Example("@SUM(A1)"));
+            sb.Column(r => r.B, col => col.Label("He said \"hi\"").Example("say \"yes\""));
+            sb.Column(r => r.C, col => col.Label("+cmd").Example("-5"));
+        }));
 
         var lines = importer.ExportTemplateCsv().TrimStart('﻿').Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal("\"'=HYPERLINK(\"\"x\"\")\",\"He said \"\"hi\"\"\",\"'+cmd\"", lines[0]);
         Assert.Equal("\"'@SUM(A1)\",\"say \"\"yes\"\"\",\"-5\"", lines[1]);       // a number stays a number
-        Assert.Contains("\"'\t=x\"", new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "t", Example = "\t=x" }] }).ExportTemplateCsv(), StringComparison.Ordinal);
-        Assert.Contains("\"'\r=x\"", new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "t", Example = "\r=x" }] }).ExportTemplateCsv(), StringComparison.Ordinal);
+        Assert.Contains("\"'\t=x\"", new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.T, col => col.Example("\t=x"));
+        })).ExportTemplateCsv(), StringComparison.Ordinal);
+        Assert.Contains("\"'\r=x\"", new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.T, col => col.Example("\r=x"));
+        })).ExportTemplateCsv(), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -476,10 +493,13 @@ public sealed class ReviewFixTests : BunitContext
     [InlineData("plain =text", "plain =text")]
     public void The_invalid_rows_export_guards_text_cells_that_a_spreadsheet_would_read_as_a_formula(string cell, string written)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "n", Kind = SpreadsheetColumnKind.Number, Label = "=N" }] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.N, col => col.Label("=N"));
+        }));
         importer.LoadText($"=N\n\"{cell}\"", "x.csv");
         // every cell of this single column is invalid or not; make sure the row is listed
-        importer.EditCell(0, "n", cell.Trim());
+        importer.EditCell(0, "N", cell.Trim());
         var csv = importer.ExportInvalidRowsCsv();
 
         if (importer.InvalidRows.Count > 0) Assert.Contains($"\"{written.Replace("\"", "\"\"")}\"", csv, StringComparison.Ordinal);
@@ -489,7 +509,10 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public void The_issue_text_and_the_quotes_of_the_invalid_rows_export_are_escaped()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "n", Kind = SpreadsheetColumnKind.Number }] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Column(r => r.N);
+        }));
         importer.LoadText("n\n\"=say \"\"hi\"\"\"", "x.csv");
 
         var csv = importer.ExportInvalidRowsCsv(i => "=" + i.Message, "Problems");
@@ -504,16 +527,16 @@ public sealed class ReviewFixTests : BunitContext
     public async Task Progress_is_announced_at_most_every_few_seconds_and_never_as_zero_of_zero()
     {
         var gates = new[] { new TaskCompletionSource(), new TaskCompletionSource(), new TaskCompletionSource() };
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            BatchSize = 1,
-            OnSubmitAsync = async (rows, ct) =>
+            sb.BatchSize = 1;
+            sb.OnSubmitAsync = async (rows, ct) =>
             {
                 if (rows[0].Index > 0) await gates[rows[0].Index - 1].Task;
                 return null;
-            },
-            Columns = [Col("name")],
-        });
+            };
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb\nc\nd", "n.csv");
         importer.NextStep();
         importer.NextStep();
@@ -545,15 +568,15 @@ public sealed class ReviewFixTests : BunitContext
     public async Task Before_the_total_is_known_the_live_region_says_importing_without_a_count()
     {
         var gate = new TaskCompletionSource();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [Col("name")],
-            ValidateRowsAsync = async (rows, ct) =>
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
                 await gate.Task;
                 return null;
-            },
-        });
+            };
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na", "n.csv");
         importer.NextStep();
         importer.NextStep();
@@ -578,12 +601,12 @@ public sealed class ReviewFixTests : BunitContext
     [Fact]
     public async Task A_refusal_for_a_row_outside_the_batch_is_ignored()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            BatchSize = 2,
-            OnSubmit = rows => Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(rows[0].Index == 0 ? [new(3, "Not mine"), new(99, "Nobody")] : null),
-            Columns = [Col("name")],
-        });
+            sb.BatchSize = 2;
+            sb.OnSubmit = rows => Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(rows[0].Index == 0 ? [new(3, "Not mine"), new(99, "Nobody")] : null);
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb\nc\nd", "n.csv");
 
         await importer.SubmitAsync(Token);
@@ -599,20 +622,20 @@ public sealed class ReviewFixTests : BunitContext
         var gate = new TaskCompletionSource();
         var calls = 0;
         var sent = 0;
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [Col("name")],
-            OnSubmit = rows =>
+            sb.OnSubmit = rows =>
             {
                 sent += rows.Count;
                 return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(sent == 2 ? [new SpreadsheetRejectedRow(0, "Refused")] : null);
-            },
-            ValidateRowsAsync = async (rows, ct) =>
+            };
+            sb.ValidateRowsAsync = async (rows, ct) =>
             {
                 if (calls++ > 0) await gate.Task;
                 return null;
-            },
-        });
+            };
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb\nc", "n.csv");
         importer.DiscardRows([2]);
         await importer.SubmitAsync(Token);

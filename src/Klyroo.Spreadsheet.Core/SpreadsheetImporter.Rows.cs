@@ -5,7 +5,7 @@ namespace Klyroo.Spreadsheet;
 // The row pipeline: matching file columns to the schema, parsing every row once, and then keeping the rows up to date one change at a time.
 // A full pass (Recompute) runs when the file, the layout or the column mapping changes. Editing a cell, answering a value, leaving rows out
 // or applying a server result touches only the rows concerned: the duplicate-key index tells which other rows a key change affects.
-public sealed partial class SpreadsheetImporter
+public abstract partial class SpreadsheetImporter
 {
     // A row as parsed from the file text and the user's edits, before the checks that look at other rows (duplicate keys, existing records,
     // limits, manual discards) and before server and async results are added. Immutable once built: an edit replaces it.
@@ -308,8 +308,8 @@ public sealed partial class SpreadsheetImporter
             {
                 if (col.HasDefault)
                 {
-                    parsedVal = col.DefaultValue;
-                    displayText = col.DefaultValue?.ToString() ?? "";
+                    parsedVal = col.DefaultBoxed;
+                    displayText = col.DefaultBoxed?.ToString() ?? "";
                     defaulted = true;
                 }
                 else if (col.Required)
@@ -323,7 +323,7 @@ public sealed partial class SpreadsheetImporter
                 var matchedOpt = MatchSelectOption(col, cellText);
                 if (matchedOpt is not null)
                 {
-                    parsedVal = matchedOpt.Value;
+                    parsedVal = col.ConvertLoose(matchedOpt.Value);
                     displayText = matchedOpt.Label;
                 }
                 else
@@ -343,11 +343,11 @@ public sealed partial class SpreadsheetImporter
                         switch (effectiveAns.Action)
                         {
                             case SpreadsheetValueAnswerAction.Map:
-                                parsedVal = effectiveAns.MappedValue;
+                                parsedVal = col.ConvertLoose(effectiveAns.MappedValue);
                                 displayText = effectiveAns.MappedLabel ?? effectiveAns.MappedValue ?? cellText;
                                 break;
                             case SpreadsheetValueAnswerAction.Create:
-                                parsedVal = cellText;
+                                parsedVal = col.ConvertLoose(cellText);
                                 displayText = cellText;
                                 created = true;
                                 break;
@@ -375,14 +375,16 @@ public sealed partial class SpreadsheetImporter
             }
             else
             {
-                if (!TryParseScalar(col, cellText, InvariantNumbers, out parsedVal, out var parseErr))
+                if (!TryParseCell(col, cellText, InvariantNumbers, out parsedVal, out var parsedText, out var parseErr, out var localizable))
                 {
-                    fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!, col.CustomParse is null ? [cellText] : null);
+                    // Only a failure of the built-in text reading carries the cell text as an argument, so the component can show it in the
+                    // user's locale. A refusal by the column's own parser, or by the property type (1.5 in a whole number column), is shown as written.
+                    fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!, localizable ? [cellText] : null);
                     rowIssues.Add(fieldIssue);
                 }
                 else
                 {
-                    displayText = parsedVal?.ToString() ?? cellText;
+                    displayText = parsedText ?? cellText;
                 }
             }
 
@@ -426,9 +428,9 @@ public sealed partial class SpreadsheetImporter
             cellViews[col.Key] = new SpreadsheetCellView(cellText, originalText, displayText, hasEdit, defaulted, created, fieldIssue);
         }
 
-        if (Schema.ValidateRow is not null)
+        if (Schema.HasValidateRow)
         {
-            var extraIssues = Schema.ValidateRow(rowData);
+            var extraIssues = Schema.RunValidateRow(rowData);
             if (extraIssues is { Count: > 0 })
             {
                 rowIssues.AddRange(extraIssues);
@@ -438,7 +440,7 @@ public sealed partial class SpreadsheetImporter
         string? duplicateKey = null;
         if (!string.IsNullOrEmpty(Schema.RowKeyField) && rowData.TryGetValue(Schema.RowKeyField, out var keyValue))
         {
-            var key = keyValue?.ToString()?.Trim().ToLowerInvariant();
+            var key = KeyText(keyValue).Trim().ToLowerInvariant();
             if (!string.IsNullOrEmpty(key)) duplicateKey = key;
         }
 
@@ -491,7 +493,7 @@ public sealed partial class SpreadsheetImporter
         var existingDiscard = false;
         if (!string.IsNullOrEmpty(Schema.RowKeyField)
             && pr.Data.TryGetValue(Schema.RowKeyField, out var keyObj)
-            && keyObj?.ToString() is { Length: > 0 } keyStr
+            && KeyText(keyObj) is { Length: > 0 } keyStr
             && IsExistingKey(keyStr))
         {
             if (Schema.ExistingAction == SpreadsheetExistingAction.Update)
@@ -537,22 +539,27 @@ public sealed partial class SpreadsheetImporter
         return new SpreadsheetRow(
             pr.Index,
             pr.RowNumber,
-            pr.Data,
             pr.Cells,
             issues,
             status,
             discard,
             mode,
             pr.Edited,
-            discard is null && !hasError);
+            discard is null && !hasError)
+        {
+            Data = pr.Data,
+        };
     }
+
+    // The key of a row as text, the same for the duplicate check, the existing-record check and the lookup: invariant, so a number or a date key does not depend on the culture.
+    private static string KeyText(object? value) => SpreadsheetValueConverter.Format(value);
 
     private bool IsExistingKey(string key)
     {
-        if (Schema.ExistingRecords?.ContainsKey(key) == true) return true;
+        if (Schema.IsStoredKey(key)) return true;
         foreach (var found in _lookedUpRecords)
         {
-            if (found.ContainsKey(key)) return true;
+            if (found.Contains(key)) return true;
         }
         return false;
     }
@@ -687,7 +694,7 @@ public sealed partial class SpreadsheetImporter
                 col.Options ?? [],
                 effective,
                 answeredBy,
-                col.OnCreateOption is not null || col.OnCreateOptionAsync is not null));
+                col.CanCreateOption));
         }
         _questions = questionList;
         _openQuestions = questionList.Where(q => q.IsOpen).ToList();

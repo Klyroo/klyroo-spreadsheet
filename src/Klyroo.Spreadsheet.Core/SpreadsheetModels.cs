@@ -30,7 +30,7 @@ public enum SpreadsheetUnknownValuePolicy
     SkipRows,
     /// <summary>Answer automatically by importing the row with an empty value for the cell.</summary>
     LeaveEmpty,
-    /// <summary>Answer automatically by keeping the cell text as a new option. <see cref="SpreadsheetColumnSchema.OnCreateOption"/> is called once per new value on submit.</summary>
+    /// <summary>Answer automatically by keeping the cell text as a new option. <c>SpreadsheetColumnSchema.OnCreateOption</c> is called once per new value on submit.</summary>
     Create,
 }
 
@@ -45,7 +45,7 @@ public enum SpreadsheetDuplicatesPolicy
     KeepLast,
 }
 
-/// <summary>What happens to an imported row whose key is already present in <see cref="SpreadsheetSchema.ExistingRecords"/>.</summary>
+/// <summary>What happens to an imported row whose key is already present in <c>ExistingRecords</c>.</summary>
 public enum SpreadsheetExistingAction
 {
     /// <summary>Import the row in <see cref="SpreadsheetRowMode.Update"/> mode. This is the default.</summary>
@@ -113,7 +113,7 @@ public enum SpreadsheetRowMode
 {
     /// <summary>The key is new, or the schema has no key.</summary>
     Create,
-    /// <summary>The key matches an entry of <see cref="SpreadsheetSchema.ExistingRecords"/>.</summary>
+    /// <summary>The key matches an entry of <c>ExistingRecords</c>.</summary>
     Update,
     /// <summary>The key matches an existing record and the schema skips those rows.</summary>
     Skip,
@@ -186,185 +186,7 @@ public enum SpreadsheetValidationStatus
     Cancelled,
 }
 
-/// <summary>An allowed value of a <see cref="SpreadsheetColumnKind.Select"/> column.</summary>
-/// <param name="Value">The value stored in <see cref="SpreadsheetRow.Data"/> when this option matches.</param>
-/// <param name="Label">The text shown to the user. Cells are matched against it as well as against the value.</param>
-/// <param name="Aliases">Extra spellings that also match this option, for example a symbol or an abbreviation.</param>
-/// <remarks>Matching ignores case, accents, repeated spaces, a trailing <c>*</c> and a trailing <c>(required)</c>, see <see cref="SpreadsheetImporter.NormalizeText"/>.</remarks>
-public sealed record SpreadsheetOption(
-    string Value,
-    string Label,
-    IReadOnlyList<string>? Aliases = null);
-
-/// <summary>A validation rule attached to a column. A rule runs on the parsed value of a non-empty cell.</summary>
-/// <param name="Code">A stable identifier copied to <see cref="SpreadsheetRowIssue.Code"/>, usable for filtering.</param>
-/// <param name="Message">The text of the issue shown to the user when the rule fails.</param>
-/// <param name="Validate">Receives the parsed value and returns <see langword="true"/> when it is acceptable.</param>
-/// <param name="Level">The severity of the issue. Only <see cref="SpreadsheetIssueLevel.Error"/> blocks the row.</param>
-/// <param name="MessageArgs">Set by the built-in rules when <paramref name="Message"/> is their default text: the values it contains (the minimum of <see cref="Min"/>, for example). It is copied to <see cref="SpreadsheetRowIssue.Args"/>, which tells the component to show the message of the user's locale instead of the English default. <see langword="null"/> for a rule with your own message, which is shown as it is.</param>
-public sealed record SpreadsheetRule(
-    string Code,
-    string Message,
-    Func<object?, bool> Validate,
-    SpreadsheetIssueLevel Level = SpreadsheetIssueLevel.Error,
-    IReadOnlyList<string>? MessageArgs = null)
-{
-    private static readonly Regex EmailRegex = new(@"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$", RegexOptions.Compiled);
-
-    /// <summary>Creates a rule that accepts text shaped like an email address (something before and after one <c>@</c>, and a dot followed by at least two characters).</summary>
-    /// <param name="message">The issue text. When <see langword="null"/>, the component shows the built-in message of the user's locale.</param>
-    /// <param name="level">The issue severity.</param>
-    /// <returns>A rule with code <c>email</c>. It fails for any value that is not a string.</returns>
-    public static SpreadsheetRule Email(string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new("email", message ?? "Not an email address", v => v is string s && EmailRegex.IsMatch(s), level, message is null ? [] : null);
-
-    /// <summary>The match timeout <see cref="Pattern"/> uses when you pass none: 100 milliseconds per cell.</summary>
-    public static readonly TimeSpan DefaultPatternTimeout = TimeSpan.FromMilliseconds(100);
-
-    /// <summary>Creates a rule that accepts text matching a regular expression. A cell that makes the match run past the timeout (catastrophic backtracking on a hostile value) does not hang the import: it gets a <c>pattern</c> issue saying the format could not be checked in time.</summary>
-    /// <param name="pattern">The regular expression. It is not anchored unless you add <c>^</c> and <c>$</c>.</param>
-    /// <param name="message">The issue text. When <see langword="null"/>, the component shows the built-in message of the user's locale.</param>
-    /// <param name="level">The issue severity. A timed-out check gets the same severity.</param>
-    /// <param name="matchTimeout">The longest one match may take. Defaults to <see cref="DefaultPatternTimeout"/>. Use <see cref="Regex.InfiniteMatchTimeout"/> to remove the limit.</param>
-    /// <returns>A rule with code <c>pattern</c>. It fails for any value that is not a string.</returns>
-    /// <exception cref="ArgumentException"><paramref name="pattern"/> is not a valid regular expression.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="matchTimeout"/> is zero, negative or too large for <see cref="Regex"/>.</exception>
-    public static SpreadsheetRule Pattern(string pattern, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error, TimeSpan? matchTimeout = null)
-    {
-        var rx = new Regex(pattern, RegexOptions.Compiled, matchTimeout ?? DefaultPatternTimeout);
-        return new("pattern", message ?? "Unexpected format", v => v is string s && rx.IsMatch(s), level, message is null ? [] : null);
-    }
-
-    /// <summary>Creates a rule that accepts numbers greater than or equal to a minimum.</summary>
-    /// <param name="min">The smallest accepted value.</param>
-    /// <param name="message">The issue text. Defaults to a message naming the minimum.</param>
-    /// <param name="level">The issue severity.</param>
-    /// <returns>A rule with code <c>min</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
-    public static SpreadsheetRule Min(double min, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new("min", message ?? $"Value is below {min.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d >= min, level, message is null ? [min.ToString(CultureInfo.InvariantCulture)] : null);
-
-    /// <summary>Creates a rule that accepts numbers less than or equal to a maximum.</summary>
-    /// <param name="max">The largest accepted value.</param>
-    /// <param name="message">The issue text. Defaults to a message naming the maximum.</param>
-    /// <param name="level">The issue severity.</param>
-    /// <returns>A rule with code <c>max</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
-    public static SpreadsheetRule Max(double max, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new("max", message ?? $"Value is above {max.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d <= max, level, message is null ? [max.ToString(CultureInfo.InvariantCulture)] : null);
-
-    /// <summary>Creates a rule that accepts numbers inside an inclusive range.</summary>
-    /// <param name="min">The smallest accepted value.</param>
-    /// <param name="max">The largest accepted value.</param>
-    /// <param name="message">The issue text. Defaults to a message naming the range.</param>
-    /// <param name="level">The issue severity.</param>
-    /// <returns>A rule with code <c>between</c>. It fails for any value that is not a <see cref="double"/>, so use it on a <see cref="SpreadsheetColumnKind.Number"/> column.</returns>
-    public static SpreadsheetRule Between(double min, double max, string? message = null, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new("between", message ?? $"Value is not between {min.ToString(CultureInfo.InvariantCulture)} and {max.ToString(CultureInfo.InvariantCulture)}",
-            v => v is double d && d >= min && d <= max, level,
-            message is null ? [min.ToString(CultureInfo.InvariantCulture), max.ToString(CultureInfo.InvariantCulture)] : null);
-}
-
-/// <summary>Declares one field of the imported data: how to find it in the file, how to parse it and how to validate it.</summary>
-public sealed class SpreadsheetColumnSchema
-{
-    /// <summary>Creates a column definition. Set <see cref="Key"/> in the object initializer.</summary>
-    public SpreadsheetColumnSchema()
-    {
-    }
-
-    /// <summary>The field name. It is the key of <see cref="SpreadsheetRow.Data"/> and <see cref="SpreadsheetRow.Cells"/>, and it also matches a file header.</summary>
-    public required string Key { get; init; }
-    /// <summary>The display name, also matched against file headers. Defaults to <see cref="EffectiveLabel"/>.</summary>
-    public string? Label { get; init; }
-    /// <summary>How cells are parsed. Defaults to <see cref="SpreadsheetColumnKind.Text"/>.</summary>
-    public SpreadsheetColumnKind Kind { get; init; } = SpreadsheetColumnKind.Text;
-    /// <summary>Additional header spellings that match this column, on top of <see cref="Key"/> and <see cref="EffectiveLabel"/>.</summary>
-    public IReadOnlyList<string>? Headers { get; init; }
-    /// <summary>Help text for your own UI. The importer and the built-in component do not read it.</summary>
-    public string? Description { get; init; }
-    /// <summary>A sample value written in the second row of <see cref="SpreadsheetImporter.ExportTemplateCsv"/>.</summary>
-    public string? Example { get; init; }
-    /// <summary>A grouping label for your own UI. The importer and the built-in component do not read it.</summary>
-    public string? Group { get; init; }
-    /// <summary>The <see cref="Key"/> of an earlier column whose cell text this column reuses instead of reading its own file column. A column with <see cref="From"/> never matches a header and is left out of the template. The source column must come first in <see cref="SpreadsheetSchema.Columns"/>.</summary>
-    public string? From { get; init; }
-    /// <summary>When <see langword="true"/>, an empty cell is a blocking issue (code <c>required</c>) and a file with no matching column cannot be submitted, unless the column has a default.</summary>
-    public bool Required { get; init; }
-    /// <summary>Whether the built-in component lets the user edit this column's cells in the review table. <see cref="SpreadsheetImporter.EditCell"/> ignores it.</summary>
-    public bool Editable { get; init; } = true;
-    /// <summary>The value used for empty cells. It only applies when <see cref="HasDefault"/> is <see langword="true"/>.</summary>
-    public object? DefaultValue { get; init; }
-    /// <summary>Set to <see langword="true"/> to apply <see cref="DefaultValue"/>, which lets the default itself be <see langword="null"/>. A column with a default is never missing.</summary>
-    public bool HasDefault { get; init; }
-    /// <summary>The decimal mark of <see cref="SpreadsheetColumnKind.Number"/> cells, <c>.</c> or <c>,</c>. The other character is accepted as a thousands separator only between groups of three digits, so <c>12,50</c> is rejected when the mark is <c>.</c>.</summary>
-    public char DecimalSeparator { get; init; } = '.';
-    /// <summary>Exact <see cref="DateTime"/> format strings accepted for <see cref="SpreadsheetColumnKind.Date"/> cells. When empty, the defaults are <c>yyyy-MM-dd</c>, <c>yyyy-MM-dd HH:mm</c>, <c>yyyy-MM-dd HH:mm:ss</c>, <c>dd/MM/yyyy</c> and <c>dd/MM/yyyy HH:mm</c>.</summary>
-    public IReadOnlyList<string>? DateFormats { get; init; }
-    /// <summary>The allowed values of a <see cref="SpreadsheetColumnKind.Select"/> column.</summary>
-    public IReadOnlyList<SpreadsheetOption>? Options { get; init; }
-    /// <summary>What to do with select cells that match no option. Defaults to <see cref="SpreadsheetUnknownValuePolicy.Ask"/>.</summary>
-    public SpreadsheetUnknownValuePolicy UnknownPolicy { get; init; } = SpreadsheetUnknownValuePolicy.Ask;
-    /// <summary>Called once per distinct value answered with <see cref="SpreadsheetValueAnswerAction.Create"/>, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option: its <see cref="SpreadsheetOption.Value"/> in <see cref="SpreadsheetRow.Data"/> and its label in the review, and later sends do not call it again for that value. Setting it also makes the component offer a create choice (<see cref="SpreadsheetValueQuestion.CanCreate"/>).</summary>
-    public Func<string, SpreadsheetOption>? OnCreateOption { get; init; }
-    /// <summary>The asynchronous form of <see cref="OnCreateOption"/>, for a callback that calls a server. It receives the cancellation token of the submit, so cancelling the submit cancels it. When both are set, this one is used.</summary>
-    public Func<string, CancellationToken, Task<SpreadsheetOption>>? OnCreateOptionAsync { get; init; }
-    /// <summary>Validation rules run, in order, on every non-empty parsed value.</summary>
-    public IReadOnlyList<SpreadsheetRule>? Rules { get; init; }
-    /// <summary>Replaces the built-in parsing of non-select columns. It receives the cell text and returns the value. An exception marks the cell as an error with the exception message.</summary>
-    public Func<string, object?>? CustomParse { get; init; }
-
-    /// <summary><see cref="Label"/> when set, otherwise <see cref="Key"/> turned into words, for example <c>secureCode</c> becomes <c>Secure code</c>.</summary>
-    public string EffectiveLabel => Label ?? SpreadsheetImporter.HumanizeKey(Key);
-}
-
-/// <summary>Describes an import: its columns and the policies for limits, duplicates, existing records and submission. Pass it to <see cref="SpreadsheetImporter"/>.</summary>
-public sealed class SpreadsheetSchema
-{
-    /// <summary>Creates a schema with no columns and the default policies.</summary>
-    public SpreadsheetSchema()
-    {
-    }
-
-    /// <summary>A name for the import for your own use. The importer does not read it.</summary>
-    public string Key { get; init; } = "import";
-    /// <summary>The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing, and <see cref="SpreadsheetImporter.LoadFileAsync"/> reads <c>.xlsx</c> and <c>.xls</c> workbooks and delimited text whatever this list says.</summary>
-    public IReadOnlyList<string> Accept { get; init; } = [".xlsx", ".xls", ".csv", ".tsv"];
-    /// <summary>The maximum number of data rows to import. Later rows are left out with <see cref="SpreadsheetDiscardReason.Limit"/>. No limit when <see langword="null"/>.</summary>
-    public int? MaxRows { get; init; }
-    /// <summary>The name of the sheet to read, which skips sheet detection. <see langword="null"/>, empty or <c>auto</c> detects the sheet; an unknown name falls back to the first sheet.</summary>
-    public string? ForcedSheet { get; init; }
-    /// <summary>The 1-based file row number of the header row, which skips header detection. A number that matches no row selects the first row.</summary>
-    public int? ForcedHeaderRow { get; init; }
-    /// <summary>The columns to import, in display order. A column with <see cref="SpreadsheetColumnSchema.From"/> must come after its source.</summary>
-    public IReadOnlyList<SpreadsheetColumnSchema> Columns { get; init; } = [];
-    /// <summary>The <see cref="SpreadsheetColumnSchema.Key"/> of the column that identifies a row. It enables the duplicate and existing-record checks.</summary>
-    public string? RowKeyField { get; init; }
-    /// <summary>How rows that repeat a key within the file are handled. Keys are compared trimmed and case-insensitively. Needs <see cref="RowKeyField"/>.</summary>
-    public SpreadsheetDuplicatesPolicy Duplicates { get; init; } = SpreadsheetDuplicatesPolicy.Error;
-    /// <summary>Records that already exist, keyed by the row key value. A row matches when its key text equals a dictionary key under the dictionary's own comparer, with no trimming or case folding applied to the row, so build the dictionary with <see cref="StringComparer.OrdinalIgnoreCase"/> for case-insensitive keys. Needs <see cref="RowKeyField"/>.</summary>
-    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>? ExistingRecords { get; init; }
-    /// <summary>What to do with rows whose key is in <see cref="ExistingRecords"/>.</summary>
-    public SpreadsheetExistingAction ExistingAction { get; init; } = SpreadsheetExistingAction.Update;
-    /// <summary>A cross-field check run on every row after the column rules. It receives the parsed values by column key and returns extra issues, which are added to the row.</summary>
-    public Func<IReadOnlyDictionary<string, object?>, IReadOnlyList<SpreadsheetRowIssue>>? ValidateRow { get; init; }
-    /// <summary>How many match timeouts one rule may cause in a file before the importer stops evaluating it (a circuit breaker, so a hostile file cannot cost one <see cref="SpreadsheetRule.DefaultPatternTimeout"/> per cell). The rule is then listed once in <see cref="SpreadsheetImporter.DisabledRules"/> and the component shows a notice. Defaults to 3. Zero or less never stops a rule.</summary>
-    public int RuleTimeoutLimit { get; init; } = 3;
-    /// <summary>The number of rows passed to <see cref="OnSubmit"/> per call. Zero or less sends all rows in one call.</summary>
-    public int BatchSize { get; init; }
-    /// <summary>Receives each batch of importable rows and returns the rows the server refused, or <see langword="null"/> or an empty list when all were accepted. If it throws, the submit stops with <see cref="SpreadsheetSubmitStatus.Error"/>.</summary>
-    public Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmit { get; init; }
-    /// <summary>The cancellable form of <see cref="OnSubmit"/>: it also receives a <see cref="CancellationToken"/> that is cancelled by <see cref="SpreadsheetImporter.CancelSubmit"/> (the Cancel button of the component) or by the token passed to <see cref="SpreadsheetImporter.SubmitAsync"/>. A batch that throws <see cref="OperationCanceledException"/> counts as not accepted, so make the call safe to repeat. When both are set, this one is used.</summary>
-    public Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmitAsync { get; init; }
-    /// <summary>A batched check that needs the host, for example "do these SKUs exist". It receives rows that are not discarded and have no error, <see cref="ValidateBatchSize"/> at a time, and returns the issues it found with the index of their row, or <see langword="null"/> or an empty list for none. See <see cref="SpreadsheetImporter.ValidateAsync"/> for when it runs.</summary>
-    public Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>? ValidateRowsAsync { get; init; }
-    /// <summary>The number of rows passed to <see cref="ValidateRowsAsync"/> per call. Zero or less sends all rows in one call. Defaults to 500.</summary>
-    public int ValidateBatchSize { get; init; } = 500;
-    /// <summary>Looks up existing records by key on demand, instead of loading them all into <see cref="ExistingRecords"/>. It receives the distinct row key values of the file, <see cref="LookupBatchSize"/> at a time, and returns the records found by key (keys it does not return are new). A row matches when its key text equals a returned key under the dictionary's own comparer, like <see cref="ExistingRecords"/>. Needs <see cref="RowKeyField"/>. See <see cref="SpreadsheetImporter.ValidateAsync"/> for when it runs.</summary>
-    public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>>? LookupExistingRecordsAsync { get; init; }
-    /// <summary>The number of keys passed to <see cref="LookupExistingRecordsAsync"/> per call. Zero or less sends all keys in one call. Defaults to 500.</summary>
-    public int LookupBatchSize { get; init; } = 500;
-}
+// SpreadsheetOption, SpreadsheetRule, SpreadsheetColumnSchema and SpreadsheetSchema live in their own files.
 
 /// <summary>A rule the importer stopped evaluating because its matches timed out too often. See <see cref="SpreadsheetImporter.DisabledRules"/>.</summary>
 /// <param name="ColumnKey">The key of the column the rule belongs to.</param>
@@ -372,12 +194,12 @@ public sealed class SpreadsheetSchema
 /// <param name="Timeouts">The number of timeouts that stopped it.</param>
 public sealed record SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts);
 
-/// <summary>An issue found by <see cref="SpreadsheetSchema.ValidateRowsAsync"/>, with the row it belongs to.</summary>
+/// <summary>An issue found by <c>ValidateRowsAsync</c>, with the row it belongs to.</summary>
 /// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>
 /// <param name="Issue">The issue added to that row. Only <see cref="SpreadsheetIssueLevel.Error"/> blocks the row.</param>
 public sealed record SpreadsheetIndexedIssue(int RowIndex, SpreadsheetRowIssue Issue);
 
-/// <summary>A row that <see cref="SpreadsheetSchema.OnSubmit"/> refused. It comes back as an error issue with code <c>server</c> on that row.</summary>
+/// <summary>A row that <c>OnSubmit</c> refused. It comes back as an error issue with code <c>server</c> on that row.</summary>
 /// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the refused row.</param>
 /// <param name="Message">The reason, shown to the user.</param>
 /// <param name="Field">The column key the reason relates to, or <see langword="null"/> for the whole row.</param>
@@ -452,7 +274,7 @@ public sealed record SpreadsheetValueAnswer(
 /// <param name="Choices">The options the value can be mapped to.</param>
 /// <param name="Answer">The current answer, or <see langword="null"/> while the question is open.</param>
 /// <param name="AnsweredBy"><c>user</c> or <c>policy</c> when answered, otherwise <see langword="null"/>.</param>
-/// <param name="CanCreate">Whether the column defines <see cref="SpreadsheetColumnSchema.OnCreateOption"/>, so creating the value is allowed.</param>
+/// <param name="CanCreate">Whether the column defines <c>SpreadsheetColumnSchema.OnCreateOption</c>, so creating the value is allowed.</param>
 public sealed record SpreadsheetValueQuestion(
     string Id,
     string FieldKey,
@@ -474,7 +296,7 @@ public sealed record SpreadsheetValueQuestion(
 /// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c> and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
 /// <param name="Level">The severity.</param>
 /// <param name="Message">The text of the issue in English. <c>KlySpreadsheetImport</c> shows it as it is when <paramref name="Args"/> is <see langword="null"/>.</param>
-/// <param name="Args">Set for the messages the library writes itself: the values the message contains (the cell text of a <c>number</c> issue, the row number of a <c>row.duplicate</c> issue), possibly none. With it, the component shows the message of the user's locale for the <paramref name="Code"/>, see <c>SpreadsheetTexts</c>. <see langword="null"/> for a message you wrote (a rule with your own text, <see cref="SpreadsheetSchema.ValidateRow"/>, a server rejection), which is never replaced.</param>
+/// <param name="Args">Set for the messages the library writes itself: the values the message contains (the cell text of a <c>number</c> issue, the row number of a <c>row.duplicate</c> issue), possibly none. With it, the component shows the message of the user's locale for the <paramref name="Code"/>, see <c>SpreadsheetTexts</c>. <see langword="null"/> for a message you wrote (a rule with your own text, <c>ValidateRow</c>, a server rejection), which is never replaced.</param>
 public sealed record SpreadsheetRowIssue(
     string? Field,
     string Code,
@@ -499,10 +321,9 @@ public sealed record SpreadsheetCellView(
     bool Created,
     SpreadsheetRowIssue? Issue);
 
-/// <summary>One data row after parsing and validation, as the importer currently sees it.</summary>
+/// <summary>One data row after parsing and validation, as the importer currently sees it. The typed form of a row is <see cref="SpreadsheetRow{TRow}"/>.</summary>
 /// <param name="Index">The 0-based position among the data rows (the rows after the header). Edit, discard and rejection methods use it.</param>
 /// <param name="RowNumber">The 1-based row number in the file, for messages to the user.</param>
-/// <param name="Data">The parsed values by column key: <see cref="string"/> for text, <see cref="double"/> for numbers, <see cref="bool"/> for booleans, an ISO 8601 <see cref="string"/> for dates and the option value for selects. Empty cells are <see langword="null"/>.</param>
 /// <param name="Cells">The display state of each cell by column key.</param>
 /// <param name="Issues">Every issue found on the row.</param>
 /// <param name="Status">The overall validation state.</param>
@@ -510,17 +331,33 @@ public sealed record SpreadsheetCellView(
 /// <param name="Mode">Whether the row creates a record or updates an existing one.</param>
 /// <param name="Edited">Whether the user edited any cell of the row.</param>
 /// <param name="Importable">Whether the row is sent on submit: not discarded and without an error.</param>
-public sealed record SpreadsheetRow(
+public record SpreadsheetRow(
     int Index,
     int RowNumber,
-    IReadOnlyDictionary<string, object?> Data,
     IReadOnlyDictionary<string, SpreadsheetCellView> Cells,
     IReadOnlyList<SpreadsheetRowIssue> Issues,
     SpreadsheetRowStatus Status,
     SpreadsheetDiscardReason? DiscardReason,
     SpreadsheetRowMode Mode,
     bool Edited,
-    bool Importable);
+    bool Importable)
+{
+    // The parsed values by column key, typed like the row properties. Only the library reads them: hosts get them as a TRow.
+    internal IReadOnlyDictionary<string, object?> Data { get; init; } = new Dictionary<string, object?>();
+}
+
+/// <summary>A row with the parsed values as an instance of the row type. It is what the schema callbacks receive.</summary>
+/// <typeparam name="TRow">The row class of the schema.</typeparam>
+public sealed record SpreadsheetRow<TRow> : SpreadsheetRow where TRow : class
+{
+    internal SpreadsheetRow(SpreadsheetRow source, TRow value) : base(source)
+    {
+        Value = value;
+    }
+
+    /// <summary>The parsed values. A cell that is empty without a default, or that could not be read, leaves its property at the default of its type, so check <see cref="SpreadsheetRow.Importable"/> before trusting a value. The rows the callbacks receive are importable.</summary>
+    public TRow Value { get; }
+}
 
 /// <summary>The state of one step of the import wizard.</summary>
 /// <param name="Key">One of <c>file</c>, <c>columns</c>, <c>values</c>, <c>review</c> or <c>submit</c>.</param>
@@ -544,13 +381,15 @@ public sealed record SpreadsheetStepStatus(
 /// <summary>
 /// The headless import engine. It loads delimited text or a prepared workbook, finds the sheet and header row, maps file columns
 /// to the columns of a <see cref="SpreadsheetSchema"/>, parses and validates every row, tracks the user's corrections, and sends
-/// the importable rows to <see cref="SpreadsheetSchema.OnSubmit"/> in batches.
+/// the importable rows to the schema's submit callback in batches.
 /// </summary>
 /// <remarks>
 /// An instance holds the state of one import session and is not thread-safe. Create one per user and per import.
 /// Every method that changes state raises <see cref="Changed"/> synchronously on the calling thread.
+/// This base type holds everything that does not depend on the row type, which is what <c>KlySpreadsheetImport</c> and the agent tools use.
+/// Create the typed form, <see cref="SpreadsheetImporter{TRow}"/>, from a <see cref="SpreadsheetSchema{TRow}"/>.
 /// </remarks>
-public sealed partial class SpreadsheetImporter
+public abstract partial class SpreadsheetImporter
 {
     private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
     private static readonly Regex InvariantNumber = new(@"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
@@ -592,10 +431,8 @@ public sealed partial class SpreadsheetImporter
     private IReadOnlyList<SpreadsheetFieldState> _fields = [];
     private IReadOnlyList<SpreadsheetValueQuestion> _questions = [];
 
-    /// <summary>Creates an importer for a schema, with no file loaded.</summary>
-    /// <param name="schema">The columns and policies of the import.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <see langword="null"/>.</exception>
-    public SpreadsheetImporter(SpreadsheetSchema schema)
+    // Only SpreadsheetImporter<TRow> derives from this class.
+    private protected SpreadsheetImporter(SpreadsheetSchema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
         Schema = schema;
@@ -1468,7 +1305,7 @@ public sealed partial class SpreadsheetImporter
         try
         {
             timedOut = false;
-            return rule.Validate(value);
+            return rule.Check(value);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -1478,7 +1315,7 @@ public sealed partial class SpreadsheetImporter
     }
 
     private static bool CanSuggestColumn(SpreadsheetColumnSchema col) =>
-        col.Kind != SpreadsheetColumnKind.Text || col.CustomParse is not null || col.Rules is { Count: > 0 };
+        col.Kind != SpreadsheetColumnKind.Text || col.HasParser || col.Rules is { Count: > 0 };
 
     private bool PassesColumnCheck(SpreadsheetColumnSchema col, string sample, bool invariantNumbers)
     {
@@ -1486,7 +1323,7 @@ public sealed partial class SpreadsheetImporter
         {
             return MatchSelectOption(col, sample) is not null;
         }
-        if (!TryParseScalar(col, sample, invariantNumbers, out var val, out _)) return false;
+        if (!TryParseCell(col, sample, invariantNumbers, out var val, out _, out _, out _)) return false;
         if (col.Rules is { Count: > 0 })
         {
             return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _));
@@ -1494,24 +1331,34 @@ public sealed partial class SpreadsheetImporter
         return true;
     }
 
-    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)
+    // Reads a non-empty, non-select cell into the typed value of its column. displayText is what the review table shows for it:
+    // the engine's reading (a number, an ISO 8601 date), or the typed value for a column with its own parser.
+    private static bool TryParseCell(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? typed, out string? displayText, out string? error, out bool localizable)
     {
-        if (col.CustomParse is not null)
+        localizable = false;
+        if (col.HasParser)
         {
-            try
+            if (!col.TryParseCustom(text, out typed, out error))
             {
-                value = col.CustomParse(text);
-                error = null;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                value = null;
-                error = ex.Message;
+                displayText = null;
                 return false;
             }
+            displayText = typed?.ToString();
+            return true;
         }
+        if (!TryParseScalar(col, text, invariantNumbers, out var engine, out error))
+        {
+            typed = null;
+            displayText = null;
+            localizable = true;
+            return false;
+        }
+        displayText = engine?.ToString();
+        return col.TryConvert(engine, text, out typed, out error);
+    }
 
+    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)
+    {
         switch (col.Kind)
         {
             case SpreadsheetColumnKind.Number:
@@ -1566,7 +1413,9 @@ public sealed partial class SpreadsheetImporter
                 {
                     value = dt.TimeOfDay == TimeSpan.Zero
                         ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                        : dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+                        : dt.Second == 0
+                            ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                            : dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
                     error = null;
                     return true;
                 }

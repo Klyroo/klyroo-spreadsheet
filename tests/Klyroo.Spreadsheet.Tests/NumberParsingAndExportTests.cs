@@ -4,16 +4,16 @@ namespace Klyroo.Spreadsheet.Tests;
 
 public sealed class NumberParsingAndExportTests
 {
-    private static SpreadsheetRow ImportPrice(string text, char decimalSeparator)
+    private static SpreadsheetRow<ImportRow> ImportPrice(string text, char decimalSeparator)
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "prices",
-            Columns = [new SpreadsheetColumnSchema { Key = "price", Label = "Price", Kind = SpreadsheetColumnKind.Number, DecimalSeparator = decimalSeparator }]
-        };
-        var importer = new SpreadsheetImporter(schema);
+            sb.Key = "prices";
+            sb.Column(r => r.Price, col => col.Label("Price").DecimalSeparator(decimalSeparator));
+        });
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText($"Price\n\"{text}\"", "prices.csv");
-        return Assert.Single(importer.AllRows);
+        return importer.ToTyped(Assert.Single(importer.AllRows));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public sealed class NumberParsingAndExportTests
     {
         var row = ImportPrice(text, separator);
         Assert.Empty(row.Issues);
-        Assert.Equal(expected, row.Data["price"]);
+        Assert.Equal(expected, row.Value.Price);
     }
 
     [Theory]
@@ -46,29 +46,26 @@ public sealed class NumberParsingAndExportTests
     public void Number_cells_reject_a_misplaced_thousands_separator(string text, char separator)
     {
         var row = ImportPrice(text, separator);
-        Assert.Null(row.Data["price"]);
+        Assert.Null(row.Value.Price);
         Assert.Contains(row.Issues, i => i.Code == "number");
     }
 
     [Fact]
     public void ExportInvalidRowsCsv_aligns_values_with_headers_whatever_the_file_order()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "users",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-                new SpreadsheetColumnSchema { Key = "age", Label = "Age", Kind = SpreadsheetColumnKind.Number },
-            ]
-        };
-        var importer = new SpreadsheetImporter(schema);
+            sb.Key = "users";
+            sb.Column(r => r.Email, col => col.Label("Email").Required().Rule(SpreadsheetRule.Email()));
+            sb.Column(r => r.Age, col => col.Label("Age"));
+        });
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText("Age;Notes;Email\n41;vip;not-an-email\n30;;ok@example.com", "users.csv");
 
         var lines = importer.ExportInvalidRowsCsv().TrimStart('﻿').Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal(2, lines.Length);
         Assert.Equal("\"Email\",\"Age\",\"Issues\"", lines[0]);
-        Assert.StartsWith("\"not-an-email\",\"41\",\"email: ", lines[1]);
+        Assert.StartsWith("\"not-an-email\",\"41\",\"Email: ", lines[1]);
     }
 }

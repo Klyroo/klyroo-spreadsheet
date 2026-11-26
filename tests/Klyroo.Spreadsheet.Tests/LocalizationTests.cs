@@ -17,19 +17,16 @@ public sealed class LocalizationTests : BunitContext
 
     private static CancellationToken Token => Xunit.TestContext.Current.CancellationToken;
 
-    private static SpreadsheetSchema Schema(Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null) => new()
-    {
-        Key = "people",
-        OnSubmit = onSubmit,
-        RowKeyField = "email",
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-            new SpreadsheetColumnSchema { Key = "age", Label = "Age", Kind = SpreadsheetColumnKind.Number, Rules = [SpreadsheetRule.Between(0, 120)] },
-        ],
-    };
+    private static SpreadsheetSchema<ImportRow> Schema(Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null) =>
+        SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Key = "people";
+            sb.OnSubmit = onSubmit;
+            sb.RowKey(sb.Column(r => r.Email, col => col.Label("Email").Required().Rule(SpreadsheetRule.Email())));
+            sb.Column(r => r.Age, col => col.Label("Age").Rule(SpreadsheetRule.Between(0, 120)));
+        });
 
-    private IRenderedComponent<CascadingValue<KlyLocale>> Render(KlyLocale locale, SpreadsheetImporter importer, Action<ComponentParameterCollectionBuilder<KlySpreadsheetImport>>? parameters = null) =>
+    private IRenderedComponent<CascadingValue<KlyLocale>> Render(KlyLocale locale, SpreadsheetImporter<ImportRow> importer, Action<ComponentParameterCollectionBuilder<KlySpreadsheetImport>>? parameters = null) =>
         Render<CascadingValue<KlyLocale>>(p => p
             .Add(x => x.Value, locale)
             .AddChildContent<KlySpreadsheetImport>(c =>
@@ -133,7 +130,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void The_component_shows_the_texts_of_its_locale()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
 
         var fr = Render(KlyLocales.Fr, importer);
         Assert.Equal("Importer", fr.Find("[data-slot=spreadsheet-title]").TextContent.Trim());
@@ -155,7 +152,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void A_title_you_set_is_shown_as_it_is()
     {
-        var cut = Render(KlyLocales.Fr, new SpreadsheetImporter(Schema()), p => p.Add(x => x.Title, "Import prices"));
+        var cut = Render(KlyLocales.Fr, new SpreadsheetImporter<ImportRow>(Schema()), p => p.Add(x => x.Title, "Import prices"));
 
         Assert.Equal("Import prices", cut.Find("[data-slot=spreadsheet-title]").TextContent.Trim());
     }
@@ -163,7 +160,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void The_review_pager_and_stats_are_translated()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Email;Age\na@example.com;1\nb@example.com;2\nc@example.com;x", "people.csv");
         importer.NextStep();
 
@@ -182,7 +179,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void Issue_messages_are_resolved_by_code_in_the_locale_of_the_user()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Email;Age\nnot-an-email;1\nb@example.com;x\nc@example.com;500\nb@example.com;5", "people.csv");
         importer.NextStep();
         importer.InspectRow(0);
@@ -203,15 +200,14 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void A_message_you_wrote_is_never_replaced()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            ValidateRow = row => [new SpreadsheetRowIssue(null, "custom", SpreadsheetIssueLevel.Error, "Total does not add up")],
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "email", Rules = [SpreadsheetRule.Email("Use a company address"), SpreadsheetRule.Pattern("^a", "Starts with a")] },
-                new SpreadsheetColumnSchema { Key = "age", Kind = SpreadsheetColumnKind.Number, CustomParse = text => throw new FormatException("Age is not valid here") },
-            ],
-        });
+            sb.ValidateRow = row => [new SpreadsheetRowIssue(null, "custom", SpreadsheetIssueLevel.Error, "Total does not add up")];
+            sb.Column(r => r.Email, col => col
+                .Rule(SpreadsheetRule.Email("Use a company address"))
+                .Rule(SpreadsheetRule.Pattern("^a", "Starts with a")));
+            sb.Column(r => r.Age, col => col.Parser(text => throw new FormatException("Age is not valid here")));
+        }));
         importer.LoadText("Email;Age\nnope;1", "people.csv");
         importer.NextStep();
         importer.InspectRow(0);
@@ -228,23 +224,27 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void The_library_marks_the_messages_it_wrote_and_the_English_set_gives_back_the_same_text()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            RowKeyField = "key",
-            ExistingRecords = new Dictionary<string, IReadOnlyDictionary<string, object?>> { ["old"] = new Dictionary<string, object?>() },
-            ExistingAction = SpreadsheetExistingAction.Error,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "key", Required = true },
-                new SpreadsheetColumnSchema { Key = "mail", Rules = [SpreadsheetRule.Email(), SpreadsheetRule.Pattern("^zzz")] },
-                new SpreadsheetColumnSchema { Key = "num", Kind = SpreadsheetColumnKind.Number, Rules = [SpreadsheetRule.Min(10), SpreadsheetRule.Max(20), SpreadsheetRule.Between(12, 18)] },
-                new SpreadsheetColumnSchema { Key = "flag", Kind = SpreadsheetColumnKind.Boolean },
-                new SpreadsheetColumnSchema { Key = "day", Kind = SpreadsheetColumnKind.Date },
-                new SpreadsheetColumnSchema { Key = "lvl", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A")], UnknownPolicy = SpreadsheetUnknownValuePolicy.Error },
-                new SpreadsheetColumnSchema { Key = "lvl2", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A")] },
-                new SpreadsheetColumnSchema { Key = "lvl3", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("a", "A")], UnknownPolicy = SpreadsheetUnknownValuePolicy.SkipRows },
-            ],
-        });
+            sb.ExistingRecords = new Dictionary<string, ImportRow> { ["old"] = new ImportRow() };
+            sb.ExistingAction = SpreadsheetExistingAction.Error;
+            var colKey = sb.Column(r => r.Key, col => col.Required());
+            sb.Column(r => r.Mail, col => col.Rule(SpreadsheetRule.Email()).Rule(SpreadsheetRule.Pattern("^zzz")));
+            sb.Column(r => r.Num, col => col
+                .Rule(SpreadsheetRule.Min(10d))
+                .Rule(SpreadsheetRule.Max(20d))
+                .Rule(SpreadsheetRule.Between(12d, 18d)));
+            sb.Column(r => r.Flag);
+            sb.Column(r => r.Day);
+            sb.Column(r => r.Lvl, col => col
+                .Options([new SpreadsheetOption<string?>("a", "A")])
+                .UnknownPolicy(SpreadsheetUnknownValuePolicy.Error));
+            sb.Column(r => r.Lvl2, col => col.Options([new SpreadsheetOption<string?>("a", "A")]));
+            sb.Column(r => r.Lvl3, col => col
+                .Options([new SpreadsheetOption<string?>("a", "A")])
+                .UnknownPolicy(SpreadsheetUnknownValuePolicy.SkipRows));
+            sb.RowKey(colKey);
+        }));
         importer.LoadText("key;mail;num;flag;day;lvl;lvl2;lvl3\n;bad;5;maybe;31/02/2026;zz;zz;zz\nold;a@example.com;25;yes;01/01/2026;A;A;A\nold;a@example.com;15;yes;01/01/2026;A;A;A", "all.csv");
 
         var issues = importer.AllRows.SelectMany(r => r.Issues).ToList();
@@ -280,10 +280,10 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void A_regex_timeout_is_announced_in_the_locale()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [new SpreadsheetColumnSchema { Key = "code", Rules = [SpreadsheetRule.Pattern("^(a+)+$", matchTimeout: TimeSpan.FromMilliseconds(20))] }],
-        });
+            sb.Column(r => r.Code, col => col.Rule(SpreadsheetRule.Pattern("^(a+)+$", matchTimeout: TimeSpan.FromMilliseconds(20))));
+        }));
         importer.LoadText($"code\n{new string('a', 60)}!", "codes.csv");
 
         var issue = Assert.Single(importer.AllRows[0].Issues);
@@ -299,7 +299,7 @@ public sealed class LocalizationTests : BunitContext
     {
         Services.AddKlyrooSpreadsheet(s => s.Texts("fr", t => t with { Continue = "Poursuivre", IssueRowExists = "Déjà en base" }));
         var canadian = KlyLocales.Extend(KlyLocales.Fr, code: "fr-CA", name: "Français (Canada)");
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
 
         Assert.Equal("Poursuivre", Render(KlyLocales.Fr, importer).Find("[data-slot=spreadsheet-nav-continue]").TextContent.Trim());
         Assert.Equal("Poursuivre", Render(canadian, importer).Find("[data-slot=spreadsheet-nav-continue]").TextContent.Trim());
@@ -309,7 +309,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void Texts_cannot_change_once_a_component_resolved_one()
     {
-        Render(KlyLocales.En, new SpreadsheetImporter(Schema()));
+        Render(KlyLocales.En, new SpreadsheetImporter<ImportRow>(Schema()));
         var options = Services.GetRequiredService<KlyrooOptions>().Extension<KlyrooSpreadsheetOptions>();
 
         Assert.Throws<InvalidOperationException>(() => options.Texts("en", t => t));
@@ -318,7 +318,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void The_download_of_the_invalid_rows_is_written_in_the_locale()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Email;Age\nnope;1", "people.csv");
         importer.NextStep();
         SpreadsheetDownload? received = null;
@@ -338,7 +338,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void A_polite_live_region_announces_the_counts_of_the_review_as_they_change()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Email;Age\na@example.com;1\nb@example.com;2\nc@example.com;x", "people.csv");
         importer.NextStep();
 
@@ -351,7 +351,7 @@ public sealed class LocalizationTests : BunitContext
         Assert.Contains("sr-only", live.ClassName, StringComparison.Ordinal);
         Assert.Equal("To import: 2. With errors: 1. Left out: 0.", live.TextContent.Trim());
 
-        importer.EditCell(2, "age", "3");
+        importer.EditCell(2, "Age", "3");
         cut.WaitForAssertion(() => Assert.Equal("To import: 3. With errors: 0. Left out: 0.", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim()));
 
         importer.DiscardRows([0]);
@@ -361,7 +361,7 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public void The_live_region_speaks_the_locale_and_is_silent_outside_the_review_and_the_import()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Email;Age\na@example.com;1", "people.csv");
         var cut = Render(KlyLocales.Fr, importer);
         Assert.Equal("", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim());     // the file step
@@ -375,16 +375,16 @@ public sealed class LocalizationTests : BunitContext
     public async Task The_live_region_announces_the_progress_and_the_end_of_the_import()
     {
         var gate = new TaskCompletionSource();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            BatchSize = 1,
-            OnSubmitAsync = async (rows, token) =>
+            sb.BatchSize = 1;
+            sb.OnSubmitAsync = async (rows, token) =>
             {
                 if (rows[0].Index == 1) await gate.Task.WaitAsync(token);
                 return null;
-            },
-            Columns = [new SpreadsheetColumnSchema { Key = "name" }],
-        });
+            };
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb\nc", "names.csv");
         importer.NextStep();
         importer.NextStep();
@@ -407,12 +407,12 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public async Task The_live_region_announces_a_cancelled_and_a_failed_import()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            BatchSize = 1,
-            OnSubmitAsync = (rows, token) => throw new InvalidOperationException("Database unavailable"),
-            Columns = [new SpreadsheetColumnSchema { Key = "name" }],
-        });
+            sb.BatchSize = 1;
+            sb.OnSubmitAsync = (rows, token) => throw new InvalidOperationException("Database unavailable");
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb", "names.csv");
         importer.NextStep();
         importer.NextStep();
@@ -426,11 +426,11 @@ public sealed class LocalizationTests : BunitContext
     [Fact]
     public async Task The_live_region_mentions_the_refused_rows_when_an_import_ends_with_some()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            OnSubmit = rows => Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>([new SpreadsheetRejectedRow(0, "Refused")]),
-            Columns = [new SpreadsheetColumnSchema { Key = "name" }],
-        });
+            sb.OnSubmit = rows => Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>([new SpreadsheetRejectedRow(0, "Refused")]);
+            sb.Column(r => r.Name);
+        }));
         importer.LoadText("Name\na\nb", "names.csv");
         importer.NextStep();
         importer.NextStep();

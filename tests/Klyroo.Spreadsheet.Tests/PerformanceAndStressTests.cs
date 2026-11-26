@@ -19,20 +19,17 @@ public sealed class PerformanceAndStressTests
             sb.Append($"SKU-{i:D5};user{i}@klyroo.dev;{amount}\n");
         }
 
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "bulk-orders",
-            RowKeyField = "code",
-            Duplicates = SpreadsheetDuplicatesPolicy.Error,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "code", Label = "Code", Required = true },
-                new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-                new SpreadsheetColumnSchema { Key = "amount", Label = "Amount", Kind = SpreadsheetColumnKind.Number, DecimalSeparator = ',', Required = true, Rules = [SpreadsheetRule.Min(0)] }
-            ]
-        };
+            sb.Key = "bulk-orders";
+            sb.Duplicates = SpreadsheetDuplicatesPolicy.Error;
+            var colCode = sb.Column(r => r.Code, col => col.Label("Code").Required());
+            sb.Column(r => r.Email, col => col.Label("Email").Required().Rule(SpreadsheetRule.Email()));
+            sb.Column(r => r.Amount, col => col.Label("Amount").DecimalSeparator(',').Required().Rule(SpreadsheetRule.Min(0d)));
+            sb.RowKey(colCode);
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         var sw = Stopwatch.StartNew();
         importer.LoadText(sb.ToString(), "bulk.csv");
         sw.Stop();

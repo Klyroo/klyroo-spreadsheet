@@ -9,10 +9,10 @@ public sealed class PatternTimeoutTests
     // (a+)+$ backtracks exponentially on a long run of "a" followed by a character that cannot match.
     private static readonly string Hostile = new string('a', 60) + "!";
 
-    private static SpreadsheetImporter NewImporter(SpreadsheetRule rule) => new(new SpreadsheetSchema
+    private static SpreadsheetImporter<ImportRow> NewImporter(SpreadsheetRule<string?> rule) => new(SpreadsheetSchema.For<ImportRow>(sb =>
     {
-        Columns = [new SpreadsheetColumnSchema { Key = "code", Rules = [rule] }]
-    });
+        sb.Column(r => r.Code, col => col.Rule(rule));
+    }));
 
     [Fact]
     public void A_hostile_cell_gets_a_pattern_issue_instead_of_hanging_the_import()
@@ -26,7 +26,7 @@ public sealed class PatternTimeoutTests
         var hostile = importer.AllRows[1];
         var issue = Assert.Single(hostile.Issues);
         Assert.Equal("pattern", issue.Code);
-        Assert.Equal("code", issue.Field);
+        Assert.Equal("Code", issue.Field);
         Assert.Equal(SpreadsheetIssueLevel.Error, issue.Level);
         Assert.False(hostile.Importable);
         Assert.Contains("in time", issue.Message, StringComparison.Ordinal);
@@ -61,7 +61,7 @@ public sealed class PatternTimeoutTests
     [Fact]
     public void A_custom_rule_that_throws_a_regex_timeout_is_handled_too()
     {
-        var rule = new SpreadsheetRule("custom", "Custom", _ => throw new RegexMatchTimeoutException());
+        var rule = new SpreadsheetRule<string?>("custom", "Custom", _ => throw new RegexMatchTimeoutException());
         var importer = NewImporter(rule);
 
         importer.LoadText("code\nabc", "codes.csv");
@@ -72,10 +72,12 @@ public sealed class PatternTimeoutTests
     [Fact]
     public void A_timed_out_rule_does_not_break_column_suggestions()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Required = true, Rules = [SpreadsheetRule.Pattern("^(a+)+$", matchTimeout: TimeSpan.FromMilliseconds(20))] }]
-        });
+            sb.Column(r => r.Sku, col => col
+                .Required()
+                .Rule(SpreadsheetRule.Pattern("^(a+)+$", matchTimeout: TimeSpan.FromMilliseconds(20))));
+        }));
 
         importer.LoadText($"other\n{Hostile}\naaa\naaaa\naa\naaaaa", "codes.csv");
 

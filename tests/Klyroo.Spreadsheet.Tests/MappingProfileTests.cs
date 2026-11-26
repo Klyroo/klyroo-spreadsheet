@@ -14,25 +14,24 @@ public sealed class MappingProfileTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetSchema Schema(string key = "people") => new()
-    {
-        Key = key,
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true },
-            new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-            new SpreadsheetColumnSchema { Key = "level", Label = "Level", Kind = SpreadsheetColumnKind.Select, Options = [new SpreadsheetOption("pro", "Pro"), new SpreadsheetOption("free", "Free")] },
-            new SpreadsheetColumnSchema { Key = "note", Label = "Note" },
-            new SpreadsheetColumnSchema { Key = "initial", From = "name" },
-        ],
-    };
+    private static SpreadsheetSchema<ImportRow> Schema(string key = "people") => SpreadsheetSchema.For<ImportRow>(sb =>
+        {
+            sb.Key = key;
+            var colName = sb.Column(r => r.Name, col => col.Key("name").Label("Name").Required());
+            sb.Column(r => r.Email, col => col.Key("email").Label("Email").Required().Rule(SpreadsheetRule.Email()));
+            sb.Column(r => r.Level, col => col.Key("level")
+                .Label("Level")
+                .Options([new SpreadsheetOption<string?>("pro", "Pro"), new SpreadsheetOption<string?>("free", "Free")]));
+            sb.Column(r => r.Note, col => col.Key("note").Label("Note"));
+            sb.Column(r => r.Initial, col => col.Key("initial").From(colName));
+        });
 
     // The file uses its own names for the columns.
     private const string BankFile = "Full name;E-mail address;Plan;Comment\nAda;ada@example.com;Gold;vip\nGrace;grace@example.com;Gold;\nLin;lin@example.com;Pro;";
 
-    private static SpreadsheetImporter MappedImporter()
+    private static SpreadsheetImporter<ImportRow> MappedImporter()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText(BankFile, "bank.csv");
         importer.AssignColumn("name", 0);
         importer.AssignColumn("email", 1);
@@ -61,7 +60,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void Headers_matched_by_name_are_in_the_profile_and_computed_columns_are_not()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("Name *;EMAIL\nAda;ada@example.com", "people.csv");
 
         var profile = importer.GetMappingProfile();
@@ -117,7 +116,7 @@ public sealed class MappingProfileTests : BunitContext
     public void ApplyMappingProfile_maps_the_headers_of_a_new_file_and_resolves_its_values()
     {
         var profile = MappedImporter().GetMappingProfile();
-        var next = new SpreadsheetImporter(Schema());
+        var next = new SpreadsheetImporter<ImportRow>(Schema());
         next.LoadText("Comment;Plan;E-mail address;Full name\nvip;Gold;ada@example.com;Ada", "next.csv");
         Assert.Contains(next.MissingFields, f => f.Column.Key == "name");
 
@@ -127,8 +126,8 @@ public sealed class MappingProfileTests : BunitContext
         Assert.True(result.Applied);
         Assert.Empty(next.MissingFields);
         Assert.Empty(next.OpenQuestions);
-        Assert.Equal("Ada", next.AllRows[0].Data["name"]);
-        Assert.Equal("pro", next.AllRows[0].Data["level"]);
+        Assert.Equal("Ada", next.Value(0).Name);
+        Assert.Equal("pro", next.Value(0).Level);
         Assert.Equal(["Comment"], next.UnusedHeaders);                 // "note" was declared absent, so its header is not used
         Assert.Equal(SpreadsheetColumnStatus.Unmatched, next.Fields.Single(f => f.Column.Key == "note").Status);
     }
@@ -136,7 +135,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void ApplyMappingProfile_skips_what_does_not_exist_and_a_profile_of_another_schema_or_version()
     {
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         importer.LoadText("A;B\n1;2", "ab.csv");
 
         var unknown = new SpreadsheetMappingProfile
@@ -154,7 +153,7 @@ public sealed class MappingProfileTests : BunitContext
         Assert.Equal(0, changed);
         Assert.Throws<ArgumentNullException>(() => importer.ApplyMappingProfile(null!));
 
-        var empty = new SpreadsheetImporter(Schema());
+        var empty = new SpreadsheetImporter<ImportRow>(Schema());
         Assert.False(empty.ApplyMappingProfile(MappedImporter().GetMappingProfile()).Applied);     // nothing loaded
     }
 
@@ -162,7 +161,7 @@ public sealed class MappingProfileTests : BunitContext
     public void MatchesMappingProfile_needs_every_mapped_header_and_allows_extra_ones_in_any_order()
     {
         var profile = MappedImporter().GetMappingProfile();
-        var importer = new SpreadsheetImporter(Schema());
+        var importer = new SpreadsheetImporter<ImportRow>(Schema());
         Assert.False(importer.MatchesMappingProfile(profile));      // no file yet
 
         importer.LoadText("Extra;Plan;Full name;E-mail address\nx;Gold;Ada;ada@example.com", "a.csv");
@@ -178,7 +177,7 @@ public sealed class MappingProfileTests : BunitContext
     public void SavedMapping_is_applied_when_a_file_with_matching_headers_is_loaded()
     {
         var profile = MappedImporter().GetMappingProfile();
-        var next = new SpreadsheetImporter(Schema()) { SavedMapping = profile };
+        var next = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = profile };
         Assert.False(next.SavedMappingApplied);
 
         next.LoadText("Full name;E-mail address;Plan\nAda;ada@example.com;Gold", "next.csv");
@@ -193,7 +192,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void SavedMapping_is_not_applied_when_the_headers_do_not_match()
     {
-        var next = new SpreadsheetImporter(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
+        var next = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
 
         next.LoadText("Name;Email\nAda;ada@example.com", "plain.csv");
 
@@ -204,7 +203,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void Setting_SavedMapping_on_a_loaded_file_applies_it_at_once_and_clearing_it_applies_nothing()
     {
-        var next = new SpreadsheetImporter(Schema());
+        var next = new SpreadsheetImporter<ImportRow>(Schema());
         next.LoadText("Full name;E-mail address;Plan\nAda;ada@example.com;Gold", "next.csv");
         Assert.NotEmpty(next.MissingFields);
 
@@ -220,7 +219,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void SavedMapping_follows_the_header_row_and_the_sheet_the_user_picks_and_ClearFile()
     {
-        var next = new SpreadsheetImporter(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
+        var next = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
         next.LoadText("Title row;;\nFull name;E-mail address;Plan\nAda;ada@example.com;Gold", "banner.csv");
         Assert.True(next.SavedMappingApplied);
 
@@ -236,7 +235,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void A_profile_for_another_schema_key_is_not_applied_automatically()
     {
-        var next = new SpreadsheetImporter(Schema("orders")) { SavedMapping = MappedImporter().GetMappingProfile() };
+        var next = new SpreadsheetImporter<ImportRow>(Schema("orders")) { SavedMapping = MappedImporter().GetMappingProfile() };
 
         next.LoadText(BankFile, "bank.csv");
 
@@ -246,7 +245,7 @@ public sealed class MappingProfileTests : BunitContext
     [Fact]
     public void A_choice_made_after_the_automatic_mapping_overrides_it()
     {
-        var next = new SpreadsheetImporter(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
+        var next = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
         next.LoadText(BankFile, "bank.csv");
 
         next.AssignColumn("name", 3);                            // the user prefers the comment column for the name
@@ -264,7 +263,7 @@ public sealed class MappingProfileTests : BunitContext
         {
             Columns = new Dictionary<string, string> { ["full name"] = "name", ["name"] = "note" },
         };
-        var importer = new SpreadsheetImporter(Schema()) { SavedMapping = profile };
+        var importer = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = profile };
 
         importer.LoadText("Name;Full name\nAda;Ada Lovelace", "dups.csv");
 
@@ -277,17 +276,17 @@ public sealed class MappingProfileTests : BunitContext
     {
         var stored = MappedImporter().GetMappingProfile().ToJson();      // what you keep in a database or local storage
 
-        var next = new SpreadsheetImporter(Schema()) { SavedMapping = SpreadsheetMappingProfile.FromJson(stored) };
+        var next = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = SpreadsheetMappingProfile.FromJson(stored) };
         next.LoadText("Plan;Full name;E-mail address\nGold;Grace;grace@example.com", "next.csv");
 
-        Assert.Equal("pro", next.AllRows[0].Data["level"]);
+        Assert.Equal("pro", next.Value(0).Level);
         Assert.Equal(SpreadsheetColumnStatus.Matched, next.Fields.Single(f => f.Column.Key == "email").Status);
     }
 
     [Fact]
     public void The_component_applies_a_saved_mapping_and_says_so()
     {
-        var importer = new SpreadsheetImporter(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
+        var importer = new SpreadsheetImporter<ImportRow>(Schema()) { SavedMapping = MappedImporter().GetMappingProfile() };
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromText("Full name;E-mail address;Plan\nAda;ada@example.com;Gold", "bank.csv"));

@@ -15,17 +15,14 @@ public sealed class DownloadTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetImporter NewImporter(string key = "people")
+    private static SpreadsheetImporter<ImportRow> NewImporter(string key = "people")
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = key,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true, Example = "Ada Lovelace" },
-                new SpreadsheetColumnSchema { Key = "age", Label = "Age", Kind = SpreadsheetColumnKind.Number, Example = "36" },
-            ],
-        });
+            sb.Key = key;
+            sb.Column(r => r.Name, col => col.Label("Name").Required().Example("Ada Lovelace"));
+            sb.Column(r => r.Age, col => col.Label("Age").Example("36"));
+        }));
         return importer;
     }
 

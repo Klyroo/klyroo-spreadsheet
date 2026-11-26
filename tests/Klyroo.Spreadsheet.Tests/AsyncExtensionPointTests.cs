@@ -18,30 +18,25 @@ public sealed class AsyncExtensionPointTests : BunitContext
 
     // OnCreateOptionAsync
 
-    private static SpreadsheetImporter CreateImporter(
-        Func<string, CancellationToken, Task<SpreadsheetOption>>? createAsync,
-        Func<string, SpreadsheetOption>? create = null,
-        List<object?>? sent = null)
+    private static SpreadsheetImporter<ImportRow> CreateImporter(
+        Func<string, CancellationToken, Task<SpreadsheetOption<string?>>>? createAsync,
+        Func<string, SpreadsheetOption<string?>>? create = null,
+        List<string?>? sent = null)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s =>
         {
-            OnSubmit = rows =>
+            s.OnSubmit = rows =>
             {
-                sent?.AddRange(rows.Select(r => r.Data["level"]));
+                sent?.AddRange(rows.Select(r => r.Value.Level));
                 return Accepted();
-            },
-            Columns =
-            [
-                new SpreadsheetColumnSchema
-                {
-                    Key = "level",
-                    Kind = SpreadsheetColumnKind.Select,
-                    Options = [new SpreadsheetOption("a", "A")],
-                    OnCreateOptionAsync = createAsync,
-                    OnCreateOption = create,
-                },
-            ],
-        });
+            };
+            s.Column(r => r.Level, c =>
+            {
+                c.Options([new SpreadsheetOption<string?>("a", "A")]);
+                if (createAsync is not null) c.OnCreateOptionAsync(createAsync);
+                if (create is not null) c.OnCreateOption(create);
+            });
+        }));
         importer.LoadText("Level\nZ\nz\nA", "levels.csv");
         return importer;
     }
@@ -50,16 +45,16 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task OnCreateOptionAsync_creates_each_value_once_with_the_submit_token_and_rows_carry_the_option()
     {
         var created = new List<string>();
-        var sent = new List<object?>();
+        var sent = new List<string?>();
         CancellationToken seen = default;
         var importer = CreateImporter(async (text, token) =>
         {
             seen = token;
             await Task.Yield();
             created.Add(text);
-            return new SpreadsheetOption("lvl-" + text.ToLowerInvariant(), text);
+            return new SpreadsheetOption<string?>("lvl-" + text.ToLowerInvariant(), text);
         }, sent: sent);
-        importer.AnswerValue("level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
         Assert.True(importer.Questions.Single().CanCreate);
 
         await importer.SubmitAsync(Token);
@@ -67,7 +62,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         Assert.Equal(["Z"], created);                           // "Z" and "z" are one value
         Assert.True(seen.CanBeCanceled);
         Assert.Equal(SpreadsheetSubmitStatus.Done, importer.SubmitStatus);
-        Assert.Equal(["lvl-z", "lvl-z", "a"], sent.Select(v => v?.ToString()));
+        Assert.Equal(["lvl-z", "lvl-z", "a"], sent);
     }
 
     [Fact]
@@ -75,14 +70,14 @@ public sealed class AsyncExtensionPointTests : BunitContext
     {
         var which = new List<string>();
         var importer = CreateImporter(
-            (text, token) => { which.Add("async"); return Task.FromResult(new SpreadsheetOption("x", text)); },
-            text => { which.Add("sync"); return new SpreadsheetOption("y", text); });
-        importer.AnswerValue("level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+            (text, token) => { which.Add("async"); return Task.FromResult(new SpreadsheetOption<string?>("x", text)); },
+            text => { which.Add("sync"); return new SpreadsheetOption<string?>("y", text); });
+        importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
         await importer.SubmitAsync(Token);
 
         Assert.Equal(["async"], which);
-        Assert.True(CreateImporter(null, text => new SpreadsheetOption(text, text)).Questions.Single().CanCreate);
+        Assert.True(CreateImporter(null, text => new SpreadsheetOption<string?>(text, text)).Questions.Single().CanCreate);
         Assert.False(CreateImporter(null).Questions.Single().CanCreate);
     }
 
@@ -90,14 +85,14 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task Cancelling_during_OnCreateOptionAsync_cancels_the_submit_before_any_row_is_sent()
     {
         var started = new TaskCompletionSource();
-        var sent = new List<object?>();
+        var sent = new List<string?>();
         var importer = CreateImporter(async (text, token) =>
         {
             started.SetResult();
             await Task.Delay(Timeout.Infinite, token);
-            return new SpreadsheetOption(text, text);
+            return new SpreadsheetOption<string?>(text, text);
         }, sent: sent);
-        importer.AnswerValue("level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
         var submit = importer.SubmitAsync(Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
@@ -112,7 +107,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task An_exception_from_OnCreateOptionAsync_is_reported_in_SubmitError()
     {
         var importer = CreateImporter((text, token) => throw new InvalidOperationException("Cannot create"));
-        importer.AnswerValue("level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
         await importer.SubmitAsync(Token);
 
@@ -122,28 +117,25 @@ public sealed class AsyncExtensionPointTests : BunitContext
 
     // ValidateRowsAsync
 
-    private static SpreadsheetImporter ValidatingImporter(
-        Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>> validate,
+    private static SpreadsheetImporter<ImportRow> ValidatingImporter(
+        Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>> validate,
         int batchSize = 2,
-        Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null)
+        Func<IReadOnlyList<SpreadsheetRow<ImportRow>>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? onSubmit = null)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s =>
         {
-            ValidateRowsAsync = validate,
-            ValidateBatchSize = batchSize,
-            OnSubmit = onSubmit,
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "sku", Required = true },
-                new SpreadsheetColumnSchema { Key = "qty", Kind = SpreadsheetColumnKind.Number },
-            ],
-        });
+            s.ValidateRowsAsync = validate;
+            s.ValidateBatchSize = batchSize;
+            s.OnSubmit = onSubmit;
+            s.Column(r => r.Sku, c => c.Required());
+            s.Column(r => r.Qty);
+        }));
         importer.LoadText("SKU;Qty\nA;1\nB;2\nC;x\nD;4\nE;5", "stock.csv");
         return importer;
     }
 
-    private static SpreadsheetIndexedIssue Unknown(SpreadsheetRow row, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
-        new(row.Index, new SpreadsheetRowIssue("sku", "sku.unknown", level, $"{row.Data["sku"]} does not exist"));
+    private static SpreadsheetIndexedIssue Unknown(SpreadsheetRow<ImportRow> row, SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
+        new(row.Index, new SpreadsheetRowIssue("Sku", "sku.unknown", level, $"{row.Value.Sku} does not exist"));
 
     [Fact]
     public async Task ValidateRowsAsync_checks_the_clean_rows_in_batches_and_adds_the_issues_to_their_rows()
@@ -152,7 +144,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         var importer = ValidatingImporter((rows, token) =>
         {
             batches.Add(rows.Select(r => r.Index).ToArray());
-            return Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => (string)r.Data["sku"]! == "B").Select(r => Unknown(r)).ToList());
+            return Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => r.Value.Sku == "B").Select(r => Unknown(r)).ToList());
         });
         Assert.True(importer.HasAsyncChecks);
         Assert.True(importer.NeedsAsyncValidation);
@@ -193,9 +185,9 @@ public sealed class AsyncExtensionPointTests : BunitContext
         await importer.ValidateAsync(Token);
         Assert.Equal(2, batches.Count);                          // the second call found nothing to check
 
-        importer.EditCell(1, "sku", "B2");
+        importer.EditCell(1, "Sku", "B2");
         Assert.True(importer.NeedsAsyncValidation);
-        importer.EditCell(2, "qty", "3");                        // row 2 had a parse error and was never sent: now it is clean
+        importer.EditCell(2, "Qty", "3");                        // row 2 had a parse error and was never sent: now it is clean
         await importer.ValidateAsync(Token);
 
         Assert.Equal([1, 2], batches[^1]);
@@ -206,11 +198,11 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task Fixing_a_row_clears_the_issue_the_validator_found_until_it_is_checked_again()
     {
         var importer = ValidatingImporter((rows, token) =>
-            Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => (string)r.Data["sku"]! == "B").Select(r => Unknown(r)).ToList()));
+            Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => r.Value.Sku == "B").Select(r => Unknown(r)).ToList()));
         await importer.ValidateAsync(Token);
         Assert.False(importer.AllRows[1].Importable);
 
-        importer.EditCell(1, "sku", "B2");
+        importer.EditCell(1, "Sku", "B2");
         Assert.True(importer.AllRows[1].Importable);             // stale until the validator has seen it
 
         await importer.ValidateAsync(Token);
@@ -222,7 +214,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task Cancelling_the_validation_keeps_the_batches_that_finished()
     {
         var calls = 0;
-        SpreadsheetImporter? importer = null;
+        SpreadsheetImporter<ImportRow>? importer = null;
         importer = ValidatingImporter((rows, token) =>
         {
             if (++calls == 2) importer!.CancelValidation();
@@ -262,7 +254,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     [Fact]
     public async Task ValidateAsync_does_nothing_without_async_checks()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "a" }] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s => s.Column(r => r.A)));
         importer.LoadText("A\n1", "a.csv");
 
         await importer.ValidateAsync(Token);
@@ -275,11 +267,11 @@ public sealed class AsyncExtensionPointTests : BunitContext
     [Fact]
     public async Task SubmitAsync_runs_the_checks_first_and_sends_only_the_rows_that_passed()
     {
-        var sent = new List<string>();
+        var sent = new List<string?>();
         var importer = ValidatingImporter(
-            (rows, token) => Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => (string)r.Data["sku"]! == "D").Select(r => Unknown(r)).ToList()),
-            onSubmit: rows => { sent.AddRange(rows.Select(r => (string)r.Data["sku"]!)); return Accepted(); });
-        importer.EditCell(2, "qty", "3");
+            (rows, token) => Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(rows.Where(r => r.Value.Sku == "D").Select(r => Unknown(r)).ToList()),
+            onSubmit: rows => { sent.AddRange(rows.Select(r => r.Value.Sku)); return Accepted(); });
+        importer.EditCell(2, "Qty", "3");
 
         await importer.SubmitAsync(Token);
 
@@ -316,7 +308,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         await importer.ValidateAsync(Token);
         Assert.Equal(4, checkedRows);
 
-        importer.IgnoreColumn("qty");
+        importer.IgnoreColumn("Qty");
         Assert.True(importer.NeedsAsyncValidation);
         await importer.ValidateAsync(Token);
 
@@ -325,28 +317,27 @@ public sealed class AsyncExtensionPointTests : BunitContext
 
     // LookupExistingRecordsAsync
 
-    private static SpreadsheetImporter LookupImporter(
-        Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>> lookup,
+    private static SpreadsheetImporter<ImportRow> LookupImporter(
+        Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, ImportRow>>> lookup,
         SpreadsheetExistingAction action = SpreadsheetExistingAction.Update,
         int batchSize = 2,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>? existing = null)
+        IReadOnlyDictionary<string, ImportRow>? existing = null)
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s =>
         {
-            RowKeyField = "sku",
-            ExistingAction = action,
-            ExistingRecords = existing,
-            LookupExistingRecordsAsync = lookup,
-            LookupBatchSize = batchSize,
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Required = true }],
-        });
+            s.RowKey(s.Column(r => r.Sku, c => c.Required()));
+            s.ExistingAction = action;
+            s.ExistingRecords = existing;
+            s.LookupExistingRecordsAsync = lookup;
+            s.LookupBatchSize = batchSize;
+        }));
         importer.LoadText("SKU\nA\nB\nA\nC\nD", "stock.csv");
         return importer;
     }
 
-    private static Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>> Found(params string[] keys) =>
-        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>(
-            keys.ToDictionary(k => k, k => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>(), StringComparer.Ordinal));
+    private static Task<IReadOnlyDictionary<string, ImportRow>> Found(params string[] keys) =>
+        Task.FromResult<IReadOnlyDictionary<string, ImportRow>>(
+            keys.ToDictionary(k => k, k => new ImportRow(), StringComparer.Ordinal));
 
     [Fact]
     public async Task The_lookup_receives_the_distinct_keys_in_batches_and_marks_the_rows_that_exist()
@@ -384,9 +375,9 @@ public sealed class AsyncExtensionPointTests : BunitContext
     [Fact]
     public async Task Looked_up_records_add_to_the_synchronous_ExistingRecords()
     {
-        var importer = LookupImporter((keys, token) => Found("B"), existing: new Dictionary<string, IReadOnlyDictionary<string, object?>>
+        var importer = LookupImporter((keys, token) => Found("B"), existing: new Dictionary<string, ImportRow>
         {
-            ["C"] = new Dictionary<string, object?>(),
+            ["C"] = new ImportRow(),
         });
         Assert.Equal(SpreadsheetRowMode.Update, importer.AllRows[3].Mode);   // the synchronous dictionary applies at once
 
@@ -409,21 +400,21 @@ public sealed class AsyncExtensionPointTests : BunitContext
         await importer.ValidateAsync(Token);
         Assert.Equal(["A", "B", "C", "D"], asked);
 
-        importer.EditCell(0, "sku", "Z");
+        importer.EditCell(0, "Sku", "Z");
         Assert.True(importer.NeedsAsyncValidation);
         await importer.ValidateAsync(Token);
 
         Assert.Equal(["A", "B", "C", "D", "Z"], asked);
         Assert.Equal(SpreadsheetRowMode.Update, importer.AllRows[0].Mode);
-        importer.EditCell(0, "sku", "A");
+        importer.EditCell(0, "Sku", "A");
         Assert.Equal(SpreadsheetRowMode.Create, importer.AllRows[0].Mode);
     }
 
     [Fact]
     public async Task A_returned_dictionary_keeps_its_own_comparer()
     {
-        var importer = LookupImporter((keys, token) => Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>(
-            new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) { ["b"] = new Dictionary<string, object?>() }));
+        var importer = LookupImporter((keys, token) => Task.FromResult<IReadOnlyDictionary<string, ImportRow>>(
+            new Dictionary<string, ImportRow>(StringComparer.OrdinalIgnoreCase) { ["b"] = new ImportRow() }));
 
         await importer.ValidateAsync(Token);
 
@@ -434,7 +425,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task Cancelling_the_lookup_keeps_the_batches_that_finished_and_the_next_run_asks_for_the_rest()
     {
         var asked = new List<string[]>();
-        SpreadsheetImporter? importer = null;
+        SpreadsheetImporter<ImportRow>? importer = null;
         importer = LookupImporter((keys, token) =>
         {
             asked.Add(keys.ToArray());
@@ -457,17 +448,16 @@ public sealed class AsyncExtensionPointTests : BunitContext
     public async Task Both_checks_run_in_one_pass_and_the_validator_sees_the_row_mode()
     {
         var modes = new List<SpreadsheetRowMode>();
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s =>
         {
-            RowKeyField = "sku",
-            LookupExistingRecordsAsync = (keys, token) => Found("B"),
-            ValidateRowsAsync = (rows, token) =>
+            s.RowKey(s.Column(r => r.Sku));
+            s.LookupExistingRecordsAsync = (keys, token) => Found("B");
+            s.ValidateRowsAsync = (rows, token) =>
             {
                 modes.AddRange(rows.Select(r => r.Mode));
                 return Task.FromResult<IReadOnlyList<SpreadsheetIndexedIssue>?>(null);
-            },
-            Columns = [new SpreadsheetColumnSchema { Key = "sku" }],
-        });
+            };
+        }));
         importer.LoadText("SKU\nA\nB", "stock.csv");
 
         await importer.ValidateAsync(Token);
@@ -484,7 +474,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         var importer = ValidatingImporter(async (rows, token) =>
         {
             await gate.Task.WaitAsync(token);
-            return rows.Where(r => (string)r.Data["sku"]! == "A").Select(r => Unknown(r)).ToList();
+            return rows.Where(r => r.Value.Sku == "A").Select(r => Unknown(r)).ToList();
         }, batchSize: 0);
         importer.NextStep();                                     // columns are fine: lands on the review
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
@@ -525,7 +515,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     [Fact]
     public void Without_async_checks_the_component_shows_no_check_state()
     {
-        var importer = new SpreadsheetImporter(new SpreadsheetSchema { Columns = [new SpreadsheetColumnSchema { Key = "a" }] });
+        var importer = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(s => s.Column(r => r.A)));
         importer.LoadText("A\n1", "a.csv");
         importer.NextStep();
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));

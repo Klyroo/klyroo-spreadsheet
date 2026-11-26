@@ -2,12 +2,12 @@ namespace Klyroo.Spreadsheet;
 
 // The checks that need the host's data: the lookup of existing records by key and the batched row validation. They run in batches
 // with a cancellation token, and what they learn is kept per row, so editing a row asks again for that row only.
-public sealed partial class SpreadsheetImporter
+public abstract partial class SpreadsheetImporter
 {
     private readonly Dictionary<int, List<SpreadsheetRowIssue>> _asyncIssues = [];
     private readonly HashSet<int> _asyncChecked = [];
     private readonly HashSet<string> _lookedUpKeys = new(StringComparer.Ordinal);
-    private readonly List<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>> _lookedUpRecords = [];
+    private readonly List<ExistingKeys> _lookedUpRecords = [];
     private bool _asyncDirty = true;
     private int _asyncStamp;
 
@@ -28,8 +28,8 @@ public sealed partial class SpreadsheetImporter
     /// <summary>The message of the exception thrown by an async check callback, or <see langword="null"/>.</summary>
     public string? ValidationError { get; private set; }
 
-    /// <summary><see langword="true"/> when the schema defines <see cref="SpreadsheetSchema.LookupExistingRecordsAsync"/> or <see cref="SpreadsheetSchema.ValidateRowsAsync"/>.</summary>
-    public bool HasAsyncChecks => Schema.ValidateRowsAsync is not null || Schema.LookupExistingRecordsAsync is not null;
+    /// <summary><see langword="true"/> when the schema defines <c>LookupExistingRecordsAsync</c> or <c>ValidateRowsAsync</c>.</summary>
+    public bool HasAsyncChecks => Schema.HasValidateRowsAsync || Schema.HasLookupExisting;
 
     /// <summary><see langword="true"/> when async checks are defined, a file is loaded, rows changed since they last completed, and no check is running or has failed (a failed run is repeated by <see cref="ValidateAsync"/> or by <see cref="SubmitAsync"/>). <c>KlySpreadsheetImport</c> runs the checks itself when this is <see langword="true"/> on the review step.</summary>
     public bool NeedsAsyncValidation =>
@@ -38,8 +38,8 @@ public sealed partial class SpreadsheetImporter
 
     /// <summary>
     /// Runs the async checks the schema defines, on the rows that were not checked yet: first the existing-records lookup for the row keys that were not looked up
-    /// (<see cref="SpreadsheetSchema.LookupExistingRecordsAsync"/>, which sets each row's <see cref="SpreadsheetRow.Mode"/> and applies <see cref="SpreadsheetSchema.ExistingAction"/>),
-    /// then the batched validation of the rows that are not discarded and have no error (<see cref="SpreadsheetSchema.ValidateRowsAsync"/>).
+    /// (<c>LookupExistingRecordsAsync</c>, which sets each row's <see cref="SpreadsheetRow.Mode"/> and applies <see cref="SpreadsheetSchema.ExistingAction"/>),
+    /// then the batched validation of the rows that are not discarded and have no error (<c>ValidateRowsAsync</c>).
     /// Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap.
     /// An exception is caught and reported in <see cref="ValidationError"/>; the results of the batches that finished are kept.
     /// </summary>
@@ -90,14 +90,14 @@ public sealed partial class SpreadsheetImporter
 
     private async Task LookupExistingAsync(CancellationToken token)
     {
-        if (Schema.LookupExistingRecordsAsync is not { } lookup || string.IsNullOrEmpty(Schema.RowKeyField)) return;
+        if (!Schema.HasLookupExisting || string.IsNullOrEmpty(Schema.RowKeyField)) return;
 
         var keys = new List<string>();
         var seen = new HashSet<string>(_lookedUpKeys, StringComparer.Ordinal);
         foreach (var row in _rowArr)
         {
             if (row.DiscardReason == SpreadsheetDiscardReason.Limit) continue;
-            if (row.Data.TryGetValue(Schema.RowKeyField, out var value) && value?.ToString() is { Length: > 0 } key && seen.Add(key))
+            if (row.Data.TryGetValue(Schema.RowKeyField, out var value) && KeyText(value) is { Length: > 0 } key && seen.Add(key))
             {
                 keys.Add(key);
             }
@@ -108,7 +108,7 @@ public sealed partial class SpreadsheetImporter
         {
             token.ThrowIfCancellationRequested();
             var batch = keys.Skip(offset).Take(batchSize).ToList();
-            var found = await lookup(batch, token);
+            var found = await Schema.LookupExistingAsync(batch, token);
             if (found is { Count: > 0 }) _lookedUpRecords.Add(found);
             foreach (var key in batch) _lookedUpKeys.Add(key);
             if (found is { Count: > 0 })
@@ -121,7 +121,7 @@ public sealed partial class SpreadsheetImporter
 
     private async Task RunRowValidationAsync(CancellationToken token)
     {
-        if (Schema.ValidateRowsAsync is not { } validate) return;
+        if (!Schema.HasValidateRowsAsync) return;
 
         var rows = _rowArr
             .Where(r => r.DiscardReason is null && r.Status != SpreadsheetRowStatus.Blocking && !_asyncChecked.Contains(r.Index))
@@ -132,7 +132,7 @@ public sealed partial class SpreadsheetImporter
             token.ThrowIfCancellationRequested();
             var batch = rows.Skip(offset).Take(batchSize).ToList();
             var sent = batch.Where(r => r.Index < _parsed.Count).ToDictionary(r => r.Index, r => _parsed[r.Index]);
-            var issues = await validate(batch, token);
+            var issues = await Schema.ValidateRowsBatchAsync(batch, token);
 
             // Apply the answers only to rows that are the same parsed row as when the batch left: an edit (or a new read of the file)
             // made the answer stale, and that row stays unchecked.

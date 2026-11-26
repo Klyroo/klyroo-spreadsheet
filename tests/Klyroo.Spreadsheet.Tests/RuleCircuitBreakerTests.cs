@@ -17,18 +17,22 @@ public sealed class RuleCircuitBreakerTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetImporter Importer(int? limit = null, params SpreadsheetRule[] rules) => new(new SpreadsheetSchema
+    private static SpreadsheetImporter<ImportRow> Importer(int? limit = null, params SpreadsheetRule<string?>[] rules) => new(SpreadsheetSchema.For<ImportRow>(sb =>
     {
-        RuleTimeoutLimit = limit ?? 3,
-        Columns = [new SpreadsheetColumnSchema { Key = "code", Label = "Code", Rules = rules }],
-    });
+        sb.RuleTimeoutLimit = limit ?? 3;
+        sb.Column(r => r.Code, col =>
+        {
+            col.Label("Code");
+            foreach (var rule in rules) col.Rule(rule);
+        });
+    }));
 
     private static string Csv(int rows) => "code\n" + string.Join('\n', Enumerable.Repeat(Hostile, rows));
 
     [Fact]
     public void The_default_limit_is_three()
     {
-        Assert.Equal(3, new SpreadsheetSchema().RuleTimeoutLimit);
+        Assert.Equal(3, SpreadsheetSchema.For<ImportRow>(_ => { }).RuleTimeoutLimit);
     }
 
     [Fact]
@@ -41,7 +45,7 @@ public sealed class RuleCircuitBreakerTests : BunitContext
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"Took {watch.Elapsed}");   // 300 x 50 ms would be 15 s
         var disabled = Assert.Single(importer.DisabledRules);
-        Assert.Equal(new SpreadsheetDisabledRule("code", "pattern", 3), disabled);
+        Assert.Equal(new SpreadsheetDisabledRule("Code", "pattern", 3), disabled);
         // The values after the limit are not waved through: they get the same "could not be checked in time" issue, without running the regex.
         Assert.Equal(300, importer.AllRows.Count(r => r.Issues.Any(i => i.Code == "pattern" && i.Args is ["timeout"])));
         Assert.Empty(importer.ImportableRows);
@@ -99,7 +103,7 @@ public sealed class RuleCircuitBreakerTests : BunitContext
         importer.LoadText(Csv(10), "a.csv");
 
         var watch = Stopwatch.StartNew();
-        importer.EditCell(9, "code", Hostile + "?");
+        importer.EditCell(9, "Code", Hostile + "?");
 
         Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(15));                        // no new timeout was paid
         Assert.Equal("pattern", Assert.Single(importer.AllRows[9].Issues).Code);            // and the edited value is still not waved through

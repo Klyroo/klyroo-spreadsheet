@@ -12,15 +12,12 @@ public sealed class ImportComponentTests : BunitContext
         Services.AddKlyrooSpreadsheet();
     }
 
-    private static SpreadsheetImporter NewImporter() => new(new SpreadsheetSchema
+    private static SpreadsheetImporter<ImportRow> NewImporter() => new(SpreadsheetSchema.For<ImportRow>(sb =>
     {
-        Key = "people",
-        Columns =
-        [
-            new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true, Description = "Full name", Group = "Identity" },
-            new SpreadsheetColumnSchema { Key = "age", Label = "Age", Kind = SpreadsheetColumnKind.Number },
-        ]
-    });
+        sb.Key = "people";
+        sb.Column(r => r.Name, col => col.Label("Name").Required().Description("Full name").Group("Identity"));
+        sb.Column(r => r.Age, col => col.Label("Age"));
+    }));
 
     [Fact]
     public void Choosing_a_file_loads_it()
@@ -59,7 +56,7 @@ public sealed class ImportComponentTests : BunitContext
         cut.Find("[data-slot=spreadsheet-paste-load]").Click();
 
         Assert.True(importer.FileLoaded);
-        Assert.Equal("Ada", importer.AllRows[0].Data["name"]);
+        Assert.Equal("Ada", importer.Value(0).Name);
     }
 
     [Fact]

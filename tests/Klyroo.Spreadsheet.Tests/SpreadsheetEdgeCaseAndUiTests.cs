@@ -15,18 +15,17 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     [Fact]
     public void SpreadsheetImporter_enforces_all_built_in_rules_and_warning_vs_error_levels()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "rules",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "code", Label = "Code", Required = true, Rules = [SpreadsheetRule.Pattern("^[A-Z0-9]{3,5}$")] },
-                new SpreadsheetColumnSchema { Key = "score", Label = "Score", Kind = SpreadsheetColumnKind.Number, Required = true, Rules = [SpreadsheetRule.Between(0, 100)] },
-                new SpreadsheetColumnSchema { Key = "note", Label = "Note", Rules = [SpreadsheetRule.Pattern("^.{5,}$", "Short note", level: SpreadsheetIssueLevel.Warning)] }
-            ]
-        };
+            sb.Key = "rules";
+            sb.Column(r => r.Code, col => col.Label("Code").Required().Rule(SpreadsheetRule.Pattern("^[A-Z0-9]{3,5}$")));
+            sb.Column(r => r.Score, col => col.Label("Score").Required().Rule(SpreadsheetRule.Between(0d, 100d)));
+            sb.Column(r => r.Note, col => col
+                .Label("Note")
+                .Rule(SpreadsheetRule.Pattern("^.{5,}$", "Short note", level: SpreadsheetIssueLevel.Warning)));
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText("Code,Score,Note\nAB,150,hi\nOK99,85,hi\nGOOD1,90,valid note", "rules.csv");
 
         Assert.Single(importer.InvalidRows); // Row 0 has blocking errors (MinLength + Between)
@@ -41,41 +40,43 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     [Fact]
     public void SpreadsheetImporter_supports_KeepFirst_and_KeepLast_duplicate_policies_and_ExistingAction_Skip_and_Error()
     {
-        var keepFirstSchema = new SpreadsheetSchema
+        var keepFirstSchema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "dup-first",
-            RowKeyField = "sku",
-            Duplicates = SpreadsheetDuplicatesPolicy.KeepFirst,
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true }, new SpreadsheetColumnSchema { Key = "qty", Label = "Qty", Kind = SpreadsheetColumnKind.Number }]
-        };
-        var impFirst = new SpreadsheetImporter(keepFirstSchema);
+            sb.Key = "dup-first";
+            sb.Duplicates = SpreadsheetDuplicatesPolicy.KeepFirst;
+            var colSku = sb.Column(r => r.Sku, col => col.Label("SKU").Required());
+            sb.Column(r => r.Qty, col => col.Label("Qty"));
+            sb.RowKey(colSku);
+        });
+        var impFirst = new SpreadsheetImporter<ImportRow>(keepFirstSchema);
         impFirst.LoadText("SKU,Qty\nA1,10\nA1,20\nB2,5", "d.csv");
         Assert.Equal(2, impFirst.ImportableRows.Count);
-        Assert.Equal(10.0, impFirst.ImportableRows[0].Data["qty"]);
+        Assert.Equal(10, impFirst.ImportableTypedRows[0].Value.Qty);
 
-        var keepLastSchema = new SpreadsheetSchema
+        var keepLastSchema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "dup-last",
-            RowKeyField = "sku",
-            Duplicates = SpreadsheetDuplicatesPolicy.KeepLast,
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true }, new SpreadsheetColumnSchema { Key = "qty", Label = "Qty", Kind = SpreadsheetColumnKind.Number }]
-        };
-        var impLast = new SpreadsheetImporter(keepLastSchema);
+            sb.Key = "dup-last";
+            sb.Duplicates = SpreadsheetDuplicatesPolicy.KeepLast;
+            var colSku = sb.Column(r => r.Sku, col => col.Label("SKU").Required());
+            sb.Column(r => r.Qty, col => col.Label("Qty"));
+            sb.RowKey(colSku);
+        });
+        var impLast = new SpreadsheetImporter<ImportRow>(keepLastSchema);
         impLast.LoadText("SKU,Qty\nA1,10\nA1,20\nB2,5", "d.csv");
         Assert.Equal(2, impLast.ImportableRows.Count);
-        Assert.Equal(20.0, impLast.ImportableRows[0].Data["qty"]);
+        Assert.Equal(20, impLast.ImportableTypedRows[0].Value.Qty);
 
-        var skipExisting = new SpreadsheetImporter(new SpreadsheetSchema
+        var skipExisting = new SpreadsheetImporter<ImportRow>(SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "skip-ex",
-            RowKeyField = "sku",
-            ExistingAction = SpreadsheetExistingAction.Skip,
-            ExistingRecords = new Dictionary<string, IReadOnlyDictionary<string, object?>>
+            sb.Key = "skip-ex";
+            sb.ExistingAction = SpreadsheetExistingAction.Skip;
+            sb.ExistingRecords = new Dictionary<string, ImportRow>
             {
-                ["A1"] = new Dictionary<string, object?> { ["sku"] = "A1" }
-            },
-            Columns = [new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true }]
-        });
+                ["A1"] = new ImportRow { Sku = "A1" }
+            };
+            var colSku = sb.Column(r => r.Sku, col => col.Label("SKU").Required());
+            sb.RowKey(colSku);
+        }));
         skipExisting.LoadText("SKU\nA1\nB2", "s.csv");
         Assert.Single(skipExisting.ImportableRows);
         Assert.Single(skipExisting.DiscardedRows);
@@ -85,33 +86,28 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     public async Task SpreadsheetImporter_OnCreateOption_fires_for_Create_answers_and_LeaveEmpty_SkipRows_work()
     {
         var createdOptions = new List<string>();
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "tags",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true },
-                new SpreadsheetColumnSchema
-                {
-                    Key = "tier", Label = "Tier", Kind = SpreadsheetColumnKind.Select,
-                    UnknownPolicy = SpreadsheetUnknownValuePolicy.Ask,
-                    Options = [new SpreadsheetOption("Std", "Standard")],
-                    OnCreateOption = raw =>
+            sb.Key = "tags";
+            sb.Column(r => r.Name, col => col.Label("Name").Required());
+            sb.Column(r => r.Tier, col => col
+                .Label("Tier")
+                .UnknownPolicy(SpreadsheetUnknownValuePolicy.Ask)
+                .Options([new SpreadsheetOption<string?>("Std", "Standard")])
+                .OnCreateOption(raw =>
                     {
                         createdOptions.Add(raw);
-                        return new SpreadsheetOption(raw, raw);
-                    }
-                }
-            ]
-        };
+                        return new SpreadsheetOption<string?>(raw, raw);
+                    }));
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText("Name,Tier\nAcme,VIP\nBeta,Legacy\nGamma,Deprecated", "tags.csv");
 
         Assert.Equal(3, importer.OpenQuestions.Count);
-        importer.AnswerValue("tier", "VIP", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
-        importer.AnswerValue("tier", "Legacy", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.LeaveEmpty));
-        importer.AnswerValue("tier", "Deprecated", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.SkipRows));
+        importer.AnswerValue("Tier", "VIP", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
+        importer.AnswerValue("Tier", "Legacy", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.LeaveEmpty));
+        importer.AnswerValue("Tier", "Deprecated", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.SkipRows));
 
         Assert.Empty(importer.OpenQuestions);
         Assert.Equal(2, importer.ImportableRows.Count);
@@ -125,17 +121,14 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     [Fact]
     public void SpreadsheetImporter_supports_manual_discard_restore_revert_cell_search_and_issue_inspection()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "review-ops",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "email", Label = "Email", Required = true, Rules = [SpreadsheetRule.Email()] },
-                new SpreadsheetColumnSchema { Key = "city", Label = "City", Required = true }
-            ]
-        };
+            sb.Key = "review-ops";
+            sb.Column(r => r.Email, col => col.Label("Email").Required().Rule(SpreadsheetRule.Email()));
+            sb.Column(r => r.City, col => col.Label("City").Required());
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText("Email,City\nbad-email,Paris\nok@klyroo.dev,Lyon\nwrong,Bordeaux", "r.csv");
 
         // Issue row inspection cycling
@@ -147,9 +140,9 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         Assert.Equal(0, importer.InspectedRowIndex);
 
         // Edit & Revert cell
-        importer.EditCell(0, "email", "fixed@klyroo.dev");
+        importer.EditCell(0, "Email", "fixed@klyroo.dev");
         Assert.Equal(2, importer.ImportableRows.Count);
-        importer.RevertCell(0, "email");
+        importer.RevertCell(0, "Email");
         Assert.Single(importer.ImportableRows);
 
         // Manual discard & restore
@@ -166,23 +159,23 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         Assert.Equal(2, importer.VisibleReviewRows.Count);
 
         // Ignore & Reset column
-        importer.IgnoreColumn("city");
+        importer.IgnoreColumn("City");
         Assert.Single(importer.MissingFields);
-        importer.ResetColumn("city");
+        importer.ResetColumn("City");
         Assert.Empty(importer.MissingFields);
     }
 
     [Fact]
     public async Task SpreadsheetImporter_captures_OnSubmit_exception_in_SubmitError()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "fail-submit",
-            Columns = [new SpreadsheetColumnSchema { Key = "name", Label = "Name", Required = true }],
-            OnSubmit = _ => throw new InvalidOperationException("Database unavailable")
-        };
+            sb.Key = "fail-submit";
+            sb.OnSubmit = _ => throw new InvalidOperationException("Database unavailable");
+            sb.Column(r => r.Name, col => col.Label("Name").Required());
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         importer.LoadText("Name\nAlice", "a.csv");
         await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
 
@@ -193,17 +186,14 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     [Fact]
     public void KlySpreadsheetImport_renders_columns_step_when_required_field_is_unmatched()
     {
-        var schema = new SpreadsheetSchema
+        var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
-            Key = "unmatched-ui",
-            Columns =
-            [
-                new SpreadsheetColumnSchema { Key = "sku", Label = "SKU", Required = true },
-                new SpreadsheetColumnSchema { Key = "price", Label = "Unit Price", Kind = SpreadsheetColumnKind.Number, Required = true }
-            ]
-        };
+            sb.Key = "unmatched-ui";
+            sb.Column(r => r.Sku, col => col.Label("SKU").Required());
+            sb.Column(r => r.Price, col => col.Label("Unit Price").Required());
+        });
 
-        var importer = new SpreadsheetImporter(schema);
+        var importer = new SpreadsheetImporter<ImportRow>(schema);
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
         importer.LoadText("SKU,MysteryCol\nA1,abc", "u.csv");
         cut.Render();
