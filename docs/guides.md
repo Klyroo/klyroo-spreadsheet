@@ -8,6 +8,7 @@ Each guide solves one task and assumes you read [Getting started](getting-starte
 - [Handle duplicates and existing records](#handle-duplicates-and-existing-records)
 - [Validate across fields](#validate-across-fields)
 - [Submit in batches and retry rejected rows](#submit-in-batches-and-retry-rejected-rows)
+- [Check rows and records against your server](#check-rows-and-records-against-your-server)
 - [Read an Excel file](#read-an-excel-file)
 - [Let users paste rows in Blazor](#let-users-paste-rows-in-blazor)
 - [Import large files](#import-large-files)
@@ -316,6 +317,56 @@ Console.WriteLine(importer.ImportedCount);       // 6
 `OnSubmitAsync` is the cancellable form of `OnSubmit`: it also receives a `CancellationToken`, which `importer.CancelSubmit()` cancels (the Cancel button of the component calls it while a submit runs), as does the token you pass to `SubmitAsync(cancellationToken)`. A cancelled submit ends in `SpreadsheetSubmitStatus.Cancelled` without an error, keeps the accepted rows, and `SubmitAsync` resumes it. The batch in flight when you cancel counts as not accepted, since the importer cannot know whether your server finished it, so make the call safe to repeat (an upsert, or an idempotency key built from the row). When both callbacks are set, `OnSubmitAsync` is used. `ResetSubmit()` forgets what was accepted so the next submit sends every row again, and loading a file or choosing another sheet or header row does it for you.
 
 An exception your callback throws is caught and reported in `SubmitError`. Batches already accepted are not undone.
+
+## Check rows and records against your server
+
+Goal: validate rows with data only your server has, without loading it all in memory.
+
+Three callbacks accept a `CancellationToken` and are called in batches. Their synchronous counterparts keep working.
+
+```csharp
+var schema = new SpreadsheetSchema
+{
+    RowKeyField = "sku",
+    ExistingAction = SpreadsheetExistingAction.Update,
+    // Which of these SKUs exist already? Return the ones you found, by key.
+    LookupExistingRecordsAsync = async (keys, cancellationToken) =>
+    {
+        var found = await catalog.FindAsync(keys, cancellationToken);                 // your API
+        return found.ToDictionary(p => p.Sku, p => (IReadOnlyDictionary<string, object?>)p.ToDictionary());
+    },
+    // Is the supplier known? Return the issues, each with the index of its row.
+    ValidateRowsAsync = async (rows, cancellationToken) =>
+    {
+        var unknown = await suppliers.UnknownAsync(rows.Select(r => (string)r.Data["supplier"]!), cancellationToken);
+        return rows.Where(r => unknown.Contains((string)r.Data["supplier"]!))
+            .Select(r => new SpreadsheetIndexedIssue(r.Index,
+                new SpreadsheetRowIssue("supplier", "supplier.unknown", SpreadsheetIssueLevel.Error, "Unknown supplier")))
+            .ToList();
+    },
+    Columns =
+    [
+        new SpreadsheetColumnSchema { Key = "sku", Required = true },
+        new SpreadsheetColumnSchema { Key = "supplier", Required = true },
+        new SpreadsheetColumnSchema
+        {
+            Key = "category",
+            Kind = SpreadsheetColumnKind.Select,
+            Options = [new("tools", "Tools")],
+            // Called once per value the user chose to create, with the token of the submit.
+            OnCreateOptionAsync = async (text, cancellationToken) => await categories.CreateAsync(text, cancellationToken),
+        },
+    ],
+};
+```
+
+**Existing records by key.** `LookupExistingRecordsAsync` receives the distinct key values of the file, `LookupBatchSize` (500) at a time, and returns the records it found by key. Rows whose key it returns get the mode, discard reason or `row.exists` issue that `ExistingAction` defines, exactly as with `ExistingRecords`, and the two can be combined. A returned dictionary keeps its own comparer, so return a case-insensitive one if your keys are.
+
+**Batched validation.** `ValidateRowsAsync` receives rows that are not discarded and have no error yet (and whose mode the lookup has set), `ValidateBatchSize` (500) at a time, and returns `SpreadsheetIndexedIssue` values: the row index and the issue to add. An error blocks the row, a warning does not.
+
+**When they run.** `await importer.ValidateAsync(cancellationToken)` runs the lookup and then the validation, on what was not checked yet. `NeedsAsyncValidation` tells whether anything changed since: loading a file, mapping a column or answering a value makes every row unchecked, and editing a row makes that row unchecked, which is also the only row sent next time. The component runs them when the review opens and again after edits, shows "Checking the rows" with a Cancel button, and shows the error with a Check again button when a callback throws. `SubmitAsync` runs them too when they are pending, so the rows it sends are the ones that passed: rows the validator flags are left out and show as invalid. `ValidationStatus` and `ValidationError` report the state, `CancelValidation()` stops a run, and the results of the batches that finished are kept. A failed run is not retried by itself: call `ValidateAsync` again.
+
+**Creating an option.** `OnCreateOptionAsync` is the asynchronous `OnCreateOption`. Setting either makes the component offer the create choice. When both are set, the asynchronous one is used.
 
 ## Read an Excel file
 

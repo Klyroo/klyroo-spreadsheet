@@ -171,6 +171,21 @@ public enum SpreadsheetSubmitStatus
     Cancelled,
 }
 
+/// <summary>Where the async checks of <see cref="SpreadsheetImporter.ValidateAsync"/> are in their lifecycle.</summary>
+public enum SpreadsheetValidationStatus
+{
+    /// <summary>No check has run since the file was loaded.</summary>
+    Idle,
+    /// <summary>The checks are running.</summary>
+    Running,
+    /// <summary>The last run finished.</summary>
+    Done,
+    /// <summary>A callback threw. <see cref="SpreadsheetImporter.ValidationError"/> holds the message.</summary>
+    Error,
+    /// <summary>The last run was cancelled before it finished.</summary>
+    Cancelled,
+}
+
 /// <summary>An allowed value of a <see cref="SpreadsheetColumnKind.Select"/> column.</summary>
 /// <param name="Value">The value stored in <see cref="SpreadsheetRow.Data"/> when this option matches.</param>
 /// <param name="Label">The text shown to the user. Cells are matched against it as well as against the value.</param>
@@ -289,6 +304,8 @@ public sealed class SpreadsheetColumnSchema
     public SpreadsheetUnknownValuePolicy UnknownPolicy { get; init; } = SpreadsheetUnknownValuePolicy.Ask;
     /// <summary>Called once per distinct value answered with <see cref="SpreadsheetValueAnswerAction.Create"/>, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option: its <see cref="SpreadsheetOption.Value"/> in <see cref="SpreadsheetRow.Data"/> and its label in the review, and later sends do not call it again for that value. Setting it also makes the component offer a create choice (<see cref="SpreadsheetValueQuestion.CanCreate"/>).</summary>
     public Func<string, SpreadsheetOption>? OnCreateOption { get; init; }
+    /// <summary>The asynchronous form of <see cref="OnCreateOption"/>, for a callback that calls a server. It receives the cancellation token of the submit, so cancelling the submit cancels it. When both are set, this one is used.</summary>
+    public Func<string, CancellationToken, Task<SpreadsheetOption>>? OnCreateOptionAsync { get; init; }
     /// <summary>Validation rules run, in order, on every non-empty parsed value.</summary>
     public IReadOnlyList<SpreadsheetRule>? Rules { get; init; }
     /// <summary>Replaces the built-in parsing of non-select columns. It receives the cell text and returns the value. An exception marks the cell as an error with the exception message.</summary>
@@ -334,7 +351,20 @@ public sealed class SpreadsheetSchema
     public Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmit { get; init; }
     /// <summary>The cancellable form of <see cref="OnSubmit"/>: it also receives a <see cref="CancellationToken"/> that is cancelled by <see cref="SpreadsheetImporter.CancelSubmit"/> (the Cancel button of the component) or by the token passed to <see cref="SpreadsheetImporter.SubmitAsync"/>. A batch that throws <see cref="OperationCanceledException"/> counts as not accepted, so make the call safe to repeat. When both are set, this one is used.</summary>
     public Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmitAsync { get; init; }
+    /// <summary>A batched check that needs the host, for example "do these SKUs exist". It receives rows that are not discarded and have no error, <see cref="ValidateBatchSize"/> at a time, and returns the issues it found with the index of their row, or <see langword="null"/> or an empty list for none. See <see cref="SpreadsheetImporter.ValidateAsync"/> for when it runs.</summary>
+    public Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>? ValidateRowsAsync { get; init; }
+    /// <summary>The number of rows passed to <see cref="ValidateRowsAsync"/> per call. Zero or less sends all rows in one call. Defaults to 500.</summary>
+    public int ValidateBatchSize { get; init; } = 500;
+    /// <summary>Looks up existing records by key on demand, instead of loading them all into <see cref="ExistingRecords"/>. It receives the distinct row key values of the file, <see cref="LookupBatchSize"/> at a time, and returns the records found by key (keys it does not return are new). A row matches when its key text equals a returned key under the dictionary's own comparer, like <see cref="ExistingRecords"/>. Needs <see cref="RowKeyField"/>. See <see cref="SpreadsheetImporter.ValidateAsync"/> for when it runs.</summary>
+    public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>>>? LookupExistingRecordsAsync { get; init; }
+    /// <summary>The number of keys passed to <see cref="LookupExistingRecordsAsync"/> per call. Zero or less sends all keys in one call. Defaults to 500.</summary>
+    public int LookupBatchSize { get; init; } = 500;
 }
+
+/// <summary>An issue found by <see cref="SpreadsheetSchema.ValidateRowsAsync"/>, with the row it belongs to.</summary>
+/// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>
+/// <param name="Issue">The issue added to that row. Only <see cref="SpreadsheetIssueLevel.Error"/> blocks the row.</param>
+public sealed record SpreadsheetIndexedIssue(int RowIndex, SpreadsheetRowIssue Issue);
 
 /// <summary>A row that <see cref="SpreadsheetSchema.OnSubmit"/> refused. It comes back as an error issue with code <c>server</c> on that row.</summary>
 /// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the refused row.</param>
@@ -755,6 +785,8 @@ public sealed partial class SpreadsheetImporter
         _selectedRows.Clear();
         InspectedRowIndex = null;
         ResetSubmitState();
+        _lookedUpKeys.Clear();
+        _lookedUpRecords.Clear();
         ReviewPage = 0;
         DetectLayout();
         Recompute();
@@ -777,6 +809,8 @@ public sealed partial class SpreadsheetImporter
         _visitedSteps.Clear();
         _visitedSteps.Add("file");
         ResetSubmitState();
+        _lookedUpKeys.Clear();
+        _lookedUpRecords.Clear();
         ReviewPage = 0;
         Recompute();
         Changed?.Invoke();
@@ -906,6 +940,7 @@ public sealed partial class SpreadsheetImporter
         var changed = rowIndexes.ToList();
         foreach (var idx in changed) _manualDiscards.Remove(idx);
         _selectedRows.Clear();
+        _asyncDirty = true;
         RefinalizeRows(changed);
         Changed?.Invoke();
     }

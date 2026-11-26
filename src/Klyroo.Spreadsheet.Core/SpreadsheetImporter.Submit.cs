@@ -18,8 +18,9 @@ public sealed partial class SpreadsheetImporter
 
     /// <summary>
     /// Sends every importable row that was not accepted yet to <see cref="SpreadsheetSchema.OnSubmitAsync"/> (or <see cref="SpreadsheetSchema.OnSubmit"/>) in batches of
-    /// <see cref="SpreadsheetSchema.BatchSize"/>. It first calls <see cref="SpreadsheetColumnSchema.OnCreateOption"/> once for each value
-    /// answered with Create. Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice.
+    /// <see cref="SpreadsheetSchema.BatchSize"/>. It first calls <see cref="SpreadsheetColumnSchema.OnCreateOptionAsync"/> or <see cref="SpreadsheetColumnSchema.OnCreateOption"/> once for each value
+    /// answered with Create, then runs the async checks of <see cref="ValidateAsync"/> when <see cref="NeedsAsyncValidation"/> (rows the checks flag with an error are left out of the send and shown as invalid).
+    /// Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice.
     /// An exception from a callback is caught and reported in <see cref="SubmitError"/>; a cancellation ends in <see cref="SpreadsheetSubmitStatus.Cancelled"/>.
     /// Does nothing while a submit is running or when <see cref="CanSubmit"/> is <see langword="false"/>.
     /// </summary>
@@ -85,11 +86,17 @@ public sealed partial class SpreadsheetImporter
             // its value and a later send does not create it again.
             await CreateAnsweredOptionsAsync(token);
 
+            // Step 2: the async checks, so the rows sent are the ones that passed them.
+            if (NeedsAsyncValidation)
+            {
+                await ValidateCoreAsync(token, rethrow: true);
+            }
+
             var rowsToSend = selectRows();
             SubmitTotal = rowsToSend.Count;
             Changed?.Invoke();
 
-            // Step 2: send in batches, recording each batch as soon as the host has answered.
+            // Step 3: send in batches, recording each batch as soon as the host has answered.
             var batchSize = Schema.BatchSize > 0 ? Schema.BatchSize : Math.Max(1, rowsToSend.Count);
             for (var offset = 0; offset < rowsToSend.Count; offset += batchSize)
             {
@@ -154,7 +161,11 @@ public sealed partial class SpreadsheetImporter
             {
                 var col = Schema.Columns.FirstOrDefault(c => c.Key == q.FieldKey);
                 SpreadsheetOption? option;
-                if (col?.OnCreateOption is { } create)
+                if (col?.OnCreateOptionAsync is { } createAsync)
+                {
+                    option = await createAsync(q.RawValue, cancellationToken);
+                }
+                else if (col?.OnCreateOption is { } create)
                 {
                     option = create(q.RawValue);
                 }

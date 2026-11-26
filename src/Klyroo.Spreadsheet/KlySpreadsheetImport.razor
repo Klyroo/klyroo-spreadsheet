@@ -212,6 +212,15 @@
 
     private void OnImporterChanged() => _ = InvokeAsync(StateHasChanged);
 
+    // The checks that need your data (existing records, batched validation) run once the user reaches the review, and again for rows edited since.
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (Importer is { CurrentStepKey: "review", NeedsAsyncValidation: true } importer)
+        {
+            _ = InvokeAsync(() => importer.ValidateAsync());
+        }
+    }
+
     private RenderFragment RenderFileStep() =>
         @<div class="flex flex-col gap-4" data-slot="spreadsheet-step-file">
             @if (!Importer.FileLoaded)
@@ -354,6 +363,34 @@
             }
         </text>;
 
+    private RenderFragment RenderValidationStatus() =>
+        @<text>
+            @if (Importer.HasAsyncChecks && Importer.ValidationStatus != SpreadsheetValidationStatus.Idle)
+            {
+                <div class="flex flex-wrap items-center gap-2 text-xs text-(--klyroo-text-muted)" role="status" data-slot="spreadsheet-validation" data-state="@Importer.ValidationStatus.ToString().ToLowerInvariant()">
+                    <span>
+                        @(Importer.ValidationStatus switch
+                        {
+                            SpreadsheetValidationStatus.Running => "Checking the rows…",
+                            SpreadsheetValidationStatus.Done => "The rows were checked",
+                            SpreadsheetValidationStatus.Cancelled => "The check was cancelled",
+                            _ => $"The check failed: {Importer.ValidationError}",
+                        })
+                    </span>
+                    @if (Importer.ValidationStatus == SpreadsheetValidationStatus.Running)
+                    {
+                        <button type="button" class="font-semibold text-(--klyroo-primary-text) hover:underline" data-slot="spreadsheet-validation-cancel"
+                                @onclick="Importer.CancelValidation">Cancel</button>
+                    }
+                    else if (Importer.ValidationStatus is SpreadsheetValidationStatus.Error or SpreadsheetValidationStatus.Cancelled)
+                    {
+                        <button type="button" class="font-semibold text-(--klyroo-primary-text) hover:underline" data-slot="spreadsheet-validation-retry"
+                                @onclick="@(() => Importer.ValidateAsync())">Check again</button>
+                    }
+                </div>
+            }
+        </text>;
+
     private RenderFragment RenderColumnsStep() =>
         @<div class="flex flex-col gap-3" data-slot="spreadsheet-column-mapping">
             @foreach (var f in Importer.Fields.Where(f => string.IsNullOrEmpty(f.Column.From)))
@@ -468,6 +505,7 @@
     private RenderFragment RenderReviewStep() =>
         @<div class="flex flex-col gap-3" data-slot="spreadsheet-review">
             @RenderRowLimitNotice()
+            @RenderValidationStatus()
 
             @* Stats tiles *@
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3" data-slot="spreadsheet-stats">

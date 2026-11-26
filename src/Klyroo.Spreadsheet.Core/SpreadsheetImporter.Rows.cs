@@ -103,6 +103,10 @@ public sealed partial class SpreadsheetImporter
 
     private void Recompute()
     {
+        _asyncChecked.Clear();
+        _asyncIssues.Clear();
+        _asyncDirty = true;
+
         var sheet = CurrentSheet;
         if (sheet is null || sheet.Rows.Count == 0 || _headerRowIndex >= sheet.Rows.Count)
         {
@@ -431,6 +435,10 @@ public sealed partial class SpreadsheetImporter
         {
             (extra ??= []).AddRange(serverErrors);
         }
+        if (_asyncIssues.TryGetValue(pr.Index, out var asyncIssues))
+        {
+            (extra ??= []).AddRange(asyncIssues);
+        }
 
         var duplicateDiscard = false;
         if (pr.DuplicateKey is { } dupKey && _keyGroups.TryGetValue(dupKey, out var group) && group.Count > 1)
@@ -510,7 +518,15 @@ public sealed partial class SpreadsheetImporter
             discard is null && !hasError);
     }
 
-    private bool IsExistingKey(string key) => Schema.ExistingRecords?.ContainsKey(key) == true;
+    private bool IsExistingKey(string key)
+    {
+        if (Schema.ExistingRecords?.ContainsKey(key) == true) return true;
+        foreach (var found in _lookedUpRecords)
+        {
+            if (found.ContainsKey(key)) return true;
+        }
+        return false;
+    }
 
     // Incremental updates
 
@@ -525,6 +541,9 @@ public sealed partial class SpreadsheetImporter
             var old = _parsed[rIdx];
             var fresh = ParseRow(rIdx);
             _parsed[rIdx] = fresh;
+            _asyncChecked.Remove(rIdx);
+            _asyncIssues.Remove(rIdx);
+            _asyncDirty = true;
             touched.Add(rIdx);
             unknownChanged |= !SameUnknown(old.Unknown, fresh.Unknown);
 
@@ -639,7 +658,7 @@ public sealed partial class SpreadsheetImporter
                 col.Options ?? [],
                 effective,
                 answeredBy,
-                col.OnCreateOption is not null));
+                col.OnCreateOption is not null || col.OnCreateOptionAsync is not null));
         }
         _questions = questionList;
         _openQuestions = questionList.Where(q => q.IsOpen).ToList();
