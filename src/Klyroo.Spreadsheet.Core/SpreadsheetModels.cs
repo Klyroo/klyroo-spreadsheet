@@ -348,6 +348,8 @@ public sealed class SpreadsheetSchema
     public SpreadsheetExistingAction ExistingAction { get; init; } = SpreadsheetExistingAction.Update;
     /// <summary>A cross-field check run on every row after the column rules. It receives the parsed values by column key and returns extra issues, which are added to the row.</summary>
     public Func<IReadOnlyDictionary<string, object?>, IReadOnlyList<SpreadsheetRowIssue>>? ValidateRow { get; init; }
+    /// <summary>How many match timeouts one rule may cause in a file before the importer stops evaluating it (a circuit breaker, so a hostile file cannot cost one <see cref="SpreadsheetRule.DefaultPatternTimeout"/> per cell). The rule is then listed once in <see cref="SpreadsheetImporter.DisabledRules"/> and the component shows a notice. Defaults to 3. Zero or less never stops a rule.</summary>
+    public int RuleTimeoutLimit { get; init; } = 3;
     /// <summary>The number of rows passed to <see cref="OnSubmit"/> per call. Zero or less sends all rows in one call.</summary>
     public int BatchSize { get; init; }
     /// <summary>Receives each batch of importable rows and returns the rows the server refused, or <see langword="null"/> or an empty list when all were accepted. If it throws, the submit stops with <see cref="SpreadsheetSubmitStatus.Error"/>.</summary>
@@ -363,6 +365,12 @@ public sealed class SpreadsheetSchema
     /// <summary>The number of keys passed to <see cref="LookupExistingRecordsAsync"/> per call. Zero or less sends all keys in one call. Defaults to 500.</summary>
     public int LookupBatchSize { get; init; } = 500;
 }
+
+/// <summary>A rule the importer stopped evaluating because its matches timed out too often. See <see cref="SpreadsheetImporter.DisabledRules"/>.</summary>
+/// <param name="ColumnKey">The key of the column the rule belongs to.</param>
+/// <param name="RuleCode">The <see cref="SpreadsheetRule.Code"/> of the rule.</param>
+/// <param name="Timeouts">The number of timeouts that stopped it.</param>
+public sealed record SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts);
 
 /// <summary>An issue found by <see cref="SpreadsheetSchema.ValidateRowsAsync"/>, with the row it belongs to.</summary>
 /// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>

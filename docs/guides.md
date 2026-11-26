@@ -66,6 +66,8 @@ What happens for each row of that file:
 
 `Pattern` matches with a timeout (100 ms by default, the `matchTimeout` argument changes it), so a pasted value built to trigger catastrophic backtracking cannot freeze the import: that cell gets a `pattern` issue saying the format could not be checked in time.
 
+A timeout costs the full timeout, so a hostile file of 50,000 cells could still cost 50,000 times 100 ms. A circuit breaker prevents that: after `SpreadsheetSchema.RuleTimeoutLimit` timeouts (3 by default, zero or less turns it off) the importer stops evaluating that rule for the rest of the read and lists it once in `importer.DisabledRules` (column key, rule code, timeouts). The component shows one notice naming the column and the rule. Only the cells read before the rule stopped carry a timeout issue, and the cells after it were not checked by that rule, so treat a non-empty `DisabledRules` as a reason to review the file. Reading the file again (a new file, sheet, header row or column choice) starts the count again.
+
 Three details are easy to miss. A rule only runs on a non-empty value that parsed. The `Min`, `Max` and `Between` rules only accept a `double`, so use them on `Number` columns. And `DefaultValue` is applied only when `HasDefault` is `true`, which lets a default be `null` on purpose.
 
 The built-in boolean values are `yes`, `y`, `oui`, `o`, `true`, `vrai`, `x`, `1` and `no`, `n`, `non`, `false`, `faux`, `0`. For anything else, set `CustomParse` on the column: it receives the cell text, returns the value, and an exception becomes an error on the cell with the exception message.

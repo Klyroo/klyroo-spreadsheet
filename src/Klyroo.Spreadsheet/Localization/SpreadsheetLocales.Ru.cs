@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "Названия столбцов в строке",
         SavedMappingApplied = "Сохранённое сопоставление столбцов применено.",
         RowLimitNotice = (limit, left) => $"Импортируются только первые {Grouped(limit, " ")} {RussianPlural(limit, "строка", "строки", "строк")}. Исключено из-за лимита: {Grouped(left, " ")}.",
+        RuleDisabledNotice = (column, rule) => $"Проверка «{rule}» для {column} остановлена после повторных превышений времени. Остальные значения не проверялись.",
         UseSuggestion = "Использовать",
         SuggestionText = (header, samples) => $"В столбце «{header}» есть значения вроде {samples}",
         SamplesText = samples => $"Примеры: {samples}",

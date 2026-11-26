@@ -365,6 +365,7 @@
                 </div>
 
                 @RenderRowLimitNotice()
+            @RenderRuleNotice()
                 @RenderSavedMappingNotice()
 
                 <div class="flex flex-wrap items-center gap-4 text-xs" data-slot="spreadsheet-layout">
@@ -414,6 +415,16 @@
             {
                 <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-success)/15 px-3 py-2 text-xs text-(--klyroo-success-text)" role="status" data-slot="spreadsheet-saved-mapping">
                     @T.SavedMappingApplied
+                </p>
+            }
+        </text>;
+
+    private RenderFragment RenderRuleNotice() =>
+        @<text>
+            @foreach (var disabled in Importer.DisabledRules)
+            {
+                <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-warning)/15 px-3 py-2 text-xs text-(--klyroo-warning-text)" role="status" data-slot="spreadsheet-rule-disabled" data-rule="@disabled.RuleCode" data-field="@disabled.ColumnKey">
+                    @T.RuleDisabledNotice(Importer.Fields.FirstOrDefault(f => f.Column.Key == disabled.ColumnKey)?.Column.EffectiveLabel ?? disabled.ColumnKey, disabled.RuleCode)
                 </p>
             }
         </text>;
@@ -571,6 +582,7 @@
     private RenderFragment RenderReviewStep() =>
         @<div class="flex flex-col gap-3" data-slot="spreadsheet-review">
             @RenderRowLimitNotice()
+            @RenderRuleNotice()
             @RenderValidationStatus()
 
             @* Stats tiles *@

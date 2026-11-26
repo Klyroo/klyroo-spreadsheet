@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "列名所在行",
         SavedMappingApplied = "已应用保存的列映射。",
         RowLimitNotice = (limit, left) => $"仅导入前 {Grouped(limit, ",")} 行。因行数上限而被排除的行：{Grouped(left, ",")}。",
+        RuleDisabledNotice = (column, rule) => $"{column}的“{rule}”检查因多次超时而停止。其余的值未被检查。",
         UseSuggestion = "使用",
         SuggestionText = (header, samples) => $"“{header}”包含类似 {samples} 的值",
         SamplesText = samples => $"示例：{samples}",

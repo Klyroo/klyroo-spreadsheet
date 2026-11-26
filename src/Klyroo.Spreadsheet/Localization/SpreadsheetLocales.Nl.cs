@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "Kolomnamen op rij",
         SavedMappingApplied = "Je opgeslagen kolomtoewijzing is toegepast.",
         RowLimitNotice = (limit, left) => $"Alleen de eerste {Grouped(limit, ".")} rijen worden geïmporteerd. Door de limiet overgeslagen rijen: {Grouped(left, ".")}.",
+        RuleDisabledNotice = (column, rule) => $"De controle ‘{rule}’ van {column} is gestopt na herhaalde time-outs. De overige waarden zijn niet gecontroleerd.",
         UseSuggestion = "Gebruiken",
         SuggestionText = (header, samples) => $"‘{header}’ bevat waarden zoals {samples}",
         SamplesText = samples => $"Voorbeelden: {samples}",

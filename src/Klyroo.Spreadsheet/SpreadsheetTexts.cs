@@ -139,6 +139,9 @@ public sealed record SpreadsheetTexts
     /// <summary>The note shown when rows are past the row limit, given the limit and the number of rows left out (<c>"Only the first 10,000 rows are imported. Rows left out because of the limit: 2,345."</c>).</summary>
     public Func<int, int, string> RowLimitNotice { get; init; } = (limit, left) => $"Only the first {SpreadsheetLocales.Grouped(limit, ",")} rows are imported. Rows left out because of the limit: {SpreadsheetLocales.Grouped(left, ",")}.";
 
+    /// <summary>The note shown when a rule was stopped because its matches kept timing out, given the column label and the rule code (<c>"The \"pattern\" check of Code was stopped after repeated timeouts. Its remaining values were not checked."</c>).</summary>
+    public Func<string, string, string> RuleDisabledNotice { get; init; } = (column, rule) => $"The \"{rule}\" check of {column} was stopped after repeated timeouts. Its remaining values were not checked.";
+
 
     // Columns step
     /// <summary>The button that accepts a suggested file column (<c>"Use it"</c>).</summary>

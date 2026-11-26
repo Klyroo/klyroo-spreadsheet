@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "Nomes das colunas na linha",
         SavedMappingApplied = "O mapeamento de colunas salvo foi aplicado.",
         RowLimitNotice = (limit, left) => $"Somente as primeiras {Grouped(limit, ".")} linhas são importadas. Linhas deixadas de fora por causa do limite: {Grouped(left, ".")}.",
+        RuleDisabledNotice = (column, rule) => $"A verificação “{rule}” de {column} foi interrompida após vários tempos limite esgotados. Os valores restantes não foram verificados.",
         UseSuggestion = "Usar",
         SuggestionText = (header, samples) => $"“{header}” tem valores como {samples}",
         SamplesText = samples => $"Exemplos: {samples}",

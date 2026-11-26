@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "Spaltennamen in Zeile",
         SavedMappingApplied = "Ihre gespeicherte Spaltenzuordnung wurde angewendet.",
         RowLimitNotice = (limit, left) => $"Nur die ersten {Grouped(limit, ".")} Zeilen werden importiert. Wegen des Limits ausgelassene Zeilen: {Grouped(left, ".")}.",
+        RuleDisabledNotice = (column, rule) => $"Die Prüfung „{rule}“ für {column} wurde nach wiederholten Zeitüberschreitungen gestoppt. Die übrigen Werte wurden nicht geprüft.",
         UseSuggestion = "Übernehmen",
         SuggestionText = (header, samples) => $"„{header}“ enthält Werte wie {samples}",
         SamplesText = samples => $"Beispiele: {samples}",

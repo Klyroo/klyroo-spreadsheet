@@ -101,8 +101,17 @@ public sealed partial class SpreadsheetImporter
 
     // Parsing
 
+    // Match timeouts counted per rule (column key and position in Rules) during the current read, and the rules stopped after too many.
+    private readonly Dictionary<(string Column, int Rule), int> _ruleTimeouts = [];
+    private readonly List<SpreadsheetDisabledRule> _disabledRules = [];
+
+    /// <summary>The rules the importer stopped evaluating in the current read because their matches kept timing out (see <see cref="SpreadsheetSchema.RuleTimeoutLimit"/>). Values after the rule was stopped were not checked by it. Empty in the normal case.</summary>
+    public IReadOnlyList<SpreadsheetDisabledRule> DisabledRules => _disabledRules;
+
     private void Recompute()
     {
+        _ruleTimeouts.Clear();
+        _disabledRules.Clear();
         _asyncChecked.Clear();
         _asyncIssues.Clear();
         _asyncDirty = true;
@@ -379,9 +388,20 @@ public sealed partial class SpreadsheetImporter
             // Run field rules on non-empty parsed values
             if (parsedVal is not null && col.Rules is { Count: > 0 })
             {
-                foreach (var rule in col.Rules)
+                for (var ruleIndex = 0; ruleIndex < col.Rules.Count; ruleIndex++)
                 {
+                    var rule = col.Rules[ruleIndex];
+                    if (_ruleTimeouts.TryGetValue((col.Key, ruleIndex), out var seen) && Schema.RuleTimeoutLimit > 0 && seen >= Schema.RuleTimeoutLimit) continue;
                     var passed = RunRule(rule, parsedVal, out var timedOut);
+                    if (timedOut)
+                    {
+                        var count = _ruleTimeouts.GetValueOrDefault((col.Key, ruleIndex)) + 1;
+                        _ruleTimeouts[(col.Key, ruleIndex)] = count;
+                        if (Schema.RuleTimeoutLimit > 0 && count == Schema.RuleTimeoutLimit)
+                        {
+                            _disabledRules.Add(new SpreadsheetDisabledRule(col.Key, rule.Code, count));
+                        }
+                    }
                     if (!passed)
                     {
                         var ruleIssue = timedOut

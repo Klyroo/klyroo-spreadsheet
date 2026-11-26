@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "أسماء الأعمدة في الصف",
         SavedMappingApplied = "تم تطبيق ربط الأعمدة المحفوظ.",
         RowLimitNotice = (limit, left) => $"يتم استيراد أول {Grouped(limit, ",")} {ArabicPlural(limit, "صف", "صفوف")} فقط. الصفوف المستبعدة بسبب الحد: {Grouped(left, ",")}.",
+        RuleDisabledNotice = (column, rule) => $"تم إيقاف التحقق «{rule}» للعمود {column} بعد تكرار انتهاء المهلة. لم يتم التحقق من القيم المتبقية.",
         UseSuggestion = "استخدامه",
         SuggestionText = (header, samples) => $"يحتوي «{header}» على قيم مثل {samples}",
         SamplesText = samples => $"أمثلة: {samples}",

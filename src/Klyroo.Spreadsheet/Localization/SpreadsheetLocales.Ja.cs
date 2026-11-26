@@ -42,6 +42,7 @@ public static partial class SpreadsheetLocales
         ColumnNamesOnRow = "列名の行",
         SavedMappingApplied = "保存済みの列の対応付けを適用しました。",
         RowLimitNotice = (limit, left) => $"先頭の{Grouped(limit, ",")}行のみインポートされます。上限により除外された行: {Grouped(left, ",")}",
+        RuleDisabledNotice = (column, rule) => $"{column}の「{rule}」チェックはタイムアウトが続いたため停止しました。残りの値は確認されていません。",
         UseSuggestion = "使用する",
         SuggestionText = (header, samples) => $"「{header}」には{samples}のような値があります",
         SamplesText = samples => $"例: {samples}",
