@@ -11,7 +11,7 @@ namespace Klyroo.Spreadsheet;
 /// keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become <c>TRUE</c>
 /// or <c>FALSE</c>, and numbers formatted as dates become <c>yyyy-MM-dd</c> (with <c>HH:mm</c> or <c>HH:mm:ss</c> when
 /// they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (<c>.xls</c>) is
-/// not supported.
+/// read by <see cref="SpreadsheetXlsReader"/>.
 /// </summary>
 public static class SpreadsheetXlsxReader
 {
@@ -19,9 +19,6 @@ public static class SpreadsheetXlsxReader
     public const long MaxPartLength = 256L * 1024 * 1024;
 
     private const string RelationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-
-    // Built-in number formats that display a date or a time (ECMA-376, 18.8.30).
-    private static readonly HashSet<int> BuiltInDateFormats = [14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 45, 46, 47, 50, 51, 52, 53, 54, 55, 56, 57, 58];
 
     /// <summary>Reads a workbook.</summary>
     /// <param name="stream">The file content. It must be seekable; copy a browser or network stream to a <see cref="MemoryStream"/> first.</param>
@@ -185,7 +182,7 @@ public static class SpreadsheetXlsxReader
             {
                 if (xml.LocalName == "numFmt"
                     && int.TryParse(xml.GetAttribute("numFmtId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
-                    && IsDateFormatCode(xml.GetAttribute("formatCode")))
+                    && SpreadsheetDateFormats.IsDateFormatCode(xml.GetAttribute("formatCode")))
                 {
                     customDateFormats.Add(id);
                 }
@@ -197,7 +194,7 @@ public static class SpreadsheetXlsxReader
                 else if (inCellXfs && xml.LocalName == "xf")
                 {
                     if (int.TryParse(xml.GetAttribute("numFmtId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var fmt)
-                        && (BuiltInDateFormats.Contains(fmt) || customDateFormats.Contains(fmt)))
+                        && (SpreadsheetDateFormats.IsBuiltInDate(fmt) || customDateFormats.Contains(fmt)))
                     {
                         result.Add(xfIndex);
                     }
@@ -210,40 +207,6 @@ public static class SpreadsheetXlsxReader
             }
         }
         return result;
-    }
-
-    // A format code displays a date or time when, outside quoted text, brackets and escaped characters, it uses one of
-    // the date or time letters. "[h]:mm" (elapsed time) and "General" are not dates.
-    internal static bool IsDateFormatCode(string? code)
-    {
-        if (string.IsNullOrEmpty(code)) return false;
-        var section = code.Split(';')[0];
-        var plain = new StringBuilder(section.Length);
-        for (var i = 0; i < section.Length; i++)
-        {
-            var c = section[i];
-            if (c == '"')
-            {
-                var end = section.IndexOf('"', i + 1);
-                i = end < 0 ? section.Length : end;
-            }
-            else if (c == '[')
-            {
-                var end = section.IndexOf(']', i + 1);
-                i = end < 0 ? section.Length : end;
-            }
-            else if (c is '\\' or '_' or '*')
-            {
-                i++;
-            }
-            else
-            {
-                plain.Append(char.ToLowerInvariant(c));
-            }
-        }
-        var text = plain.ToString();
-        if (text.Contains("general", StringComparison.Ordinal)) return false;
-        return text.IndexOfAny(['d', 'm', 'y', 'h', 's']) >= 0;
     }
 
     private static SpreadsheetSheet ReadSheet(ZipArchiveEntry entry, string name, List<string> sharedStrings, HashSet<int> dateStyles, bool date1904)
@@ -344,22 +307,9 @@ public static class SpreadsheetXlsxReader
         if (style >= 0 && dateStyles.Contains(style)
             && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var serial))
         {
-            return FormatDate(serial, date1904) ?? raw;
+            return SpreadsheetDateFormats.FormatSerial(serial, date1904) ?? raw;
         }
         return raw;
-    }
-
-    private static string? FormatDate(double serial, bool date1904)
-    {
-        if (date1904) serial += 1462;
-        if (serial < 0 || serial > 2958465) return null;
-        var date = DateTime.FromOADate(serial);
-        // Round to the second: Excel stores times as fractions of a day.
-        date = new DateTime(date.Ticks + TimeSpan.TicksPerSecond / 2 - (date.Ticks + TimeSpan.TicksPerSecond / 2) % TimeSpan.TicksPerSecond, DateTimeKind.Unspecified);
-        if (date.TimeOfDay == TimeSpan.Zero) return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        return date.Second == 0
-            ? date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)
-            : date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     // "BC12" -> 54 (0-based). Null when the reference has no column letters.

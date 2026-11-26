@@ -6,7 +6,7 @@ Troubleshooting first, then known limitations, then common questions. Everything
 
 **An `.xls` file is refused**
 
-Only `.xlsx` workbooks are read; the legacy binary `.xls` format is not. Ask users to save the file as `.xlsx` or `.csv`. See [Read an Excel file](guides.md#read-an-excel-file).
+Legacy `.xls` workbooks from Excel 97 to 2003 are read, so a refusal has one of four causes, and the `InvalidDataException` message says which. The file is password-protected, which is not supported; the file is in the Excel 5.0/95 format (BIFF5), which is not supported either; the file is damaged; or it is not a workbook at all, as with an HTML or tab-separated export that was given the `.xls` extension. In each case ask users to save the file as `.xlsx` or `.csv`. See [Read an Excel file](guides.md#read-an-excel-file).
 
 **A required column is reported as missing but the file has it**
 
@@ -55,7 +55,7 @@ The page is rendered with Static SSR. The component needs an interactive render 
 
 ## Known limitations
 
-- **No `.xls` and no formula evaluation.** `.xlsx` cells give the value Excel saved.
+- **No formula evaluation, no encrypted or Excel 5.0/95 `.xls`.** `.xlsx` and `.xls` cells give the value Excel saved. Password-protected workbooks and `.xls` files in the BIFF5 format (Excel 5.0 and 95) are refused.
 - **English only.** Labels in the component and the messages of issues created by the importer are English. Rule messages and labels are the text you give.
 - **No rollback.** If `OnSubmit` throws midway, batches already accepted stay accepted and the importer does not say which.
 - **The importer holds the whole file.** Every row is parsed again after each change, and the test suite covers 5,000 rows. Measure with your own schema before accepting much larger files, and set `MaxRows` to cap what users can upload.

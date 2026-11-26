@@ -47,5 +47,5 @@ If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreads
 
 ## Not supported
 
-- Reading the legacy `.xls` format. `.xlsx` is supported, see [Read an Excel file](guides.md#read-an-excel-file).
+- Reading password-protected workbooks, and `.xls` files in the Excel 5.0/95 format (BIFF5). `.xlsx` and `.xls` from Excel 97 to 2003 are supported, see [Read an Excel file](guides.md#read-an-excel-file).
 - Translated text. The component's labels and messages are English strings in the component, and the issue messages created by the importer are English too. You can supply your own text for rule messages (`SpreadsheetRule` takes a `Message`) and for `Label`.

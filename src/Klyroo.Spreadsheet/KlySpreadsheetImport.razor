@@ -156,7 +156,7 @@
     private string? _fileError;
     private bool _loadingFile;
 
-    /// <summary>The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text or <c>.xlsx</c>, through <see cref="SpreadsheetImporter.LoadFileAsync"/>) or by pasting rows; your code can also call <see cref="SpreadsheetImporter.LoadText"/> or <see cref="SpreadsheetImporter.LoadWorkbook"/>.</summary>
+    /// <summary>The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text, <c>.xlsx</c> or <c>.xls</c>, through <see cref="SpreadsheetImporter.LoadFileAsync"/>) or by pasting rows; your code can also call <see cref="SpreadsheetImporter.LoadText"/> or <see cref="SpreadsheetImporter.LoadWorkbook"/>.</summary>
     [Parameter] public required SpreadsheetImporter Importer { get; set; }
     /// <summary>The heading shown above the wizard. Defaults to <c>Import</c>.</summary>
     [Parameter] public string Title { get; set; } = "Import";

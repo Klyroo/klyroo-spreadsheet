@@ -4,7 +4,7 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Static classes and extensions (1) · Classes (3) · Records (13) · Enums (13)
+Static classes and extensions (2) · Classes (3) · Records (13) · Enums (13)
 
 ### Static classes and extensions
 
@@ -12,11 +12,25 @@ Static classes and extensions (1) · Classes (3) · Records (13) · Enums (13)
 
 `Klyroo.Spreadsheet` · service
 
-Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `SpreadsheetWorkbook`, with the base class library only. Every worksheet becomes a sheet. Shared, inline and formula strings are read as text, numbers keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become `TRUE` or `FALSE`, and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (`.xls`) is not supported.
+Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `SpreadsheetWorkbook`, with the base class library only. Every worksheet becomes a sheet. Shared, inline and formula strings are read as text, numbers keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become `TRUE` or `FALSE`, and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (`.xls`) is read by `SpreadsheetXlsReader`.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `const MaxPartLength = 268435456` | `long` | The largest uncompressed size of one part of the file, 256 MB, beyond which the file is refused. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static Read(Stream stream, string fileName)` | `SpreadsheetWorkbook` | Reads a workbook. |
+
+#### `SpreadsheetXlsReader`
+
+`Klyroo.Spreadsheet` · service
+
+Reads a legacy Excel workbook (`.xls`: BIFF8 records inside an OLE2 compound file, Excel 97 to 2003) into a `SpreadsheetWorkbook`, with the base class library only. It gives the same values as `SpreadsheetXlsxReader`: every worksheet becomes a sheet (hidden ones too), strings are text, numbers keep the invariant culture, booleans become `TRUE` or `FALSE`, error cells give their text (`#DIV/0!`), and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. Password-protected workbooks and the Excel 5.0/95 format (BIFF5) are refused. The content is treated as untrusted: malformed or hostile files throw `InvalidDataException` instead of looping or allocating without bound.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `const MaxFileLength = 268435456` | `long` | The largest file, and the largest decoded stream, 256 MB, beyond which the file is refused. |
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
@@ -130,7 +144,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `InspectNextIssueRow()` | `void` | Moves the inspector to the next non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectPreviousIssueRow()` | `void` | Moves the inspector to the previous non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectRow(int? rowIndex)` | `void` | Opens a row in the inspector, or closes the inspector. |
-| `LoadFileAsync(Stream content, string fileName, long maxBytes = 10485760, CancellationToken cancellationToken = null)` | `Task` | Reads a file and loads it: an `.xlsx` workbook through `SpreadsheetXlsxReader`, anything else as delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. |
+| `LoadFileAsync(Stream content, string fileName, long maxBytes = 10485760, CancellationToken cancellationToken = null)` | `Task` | Reads a file and loads it: an `.xlsx` workbook through `SpreadsheetXlsxReader`, a legacy `.xls` workbook through `SpreadsheetXlsReader`, anything else as delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. The content decides for the legacy format: a file that starts with the OLE2 signature is read as `.xls` whatever its extension, and a zip archive named `.xls` is read as `.xlsx`. |
 | `LoadText(string text, string fileName = "import.csv")` | `void` | Parses delimited text as a one-sheet workbook and loads it, replacing any previous file and discarding the user's corrections. |
 | `LoadWorkbook(SpreadsheetWorkbook workbook)` | `void` | Loads a prepared workbook, replacing any previous file and discarding the user's column choices, answers, edits and discards. Detects the sheet and header row unless the schema forces them. |
 | `NextStep()` | `bool` | Moves to the next step that is not skipped. |
@@ -163,7 +177,7 @@ Describes an import: its columns and the policies for limits, duplicates, existi
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `Accept` (init) | `IReadOnlyList<string>` | The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing and only parses delimited text. |
+| `Accept` (init) | `IReadOnlyList<string>` | The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing, and `SpreadsheetImporter.LoadFileAsync` reads `.xlsx` and `.xls` workbooks and delimited text whatever this list says. |
 | `BatchSize` (init) | `int` | The number of rows passed to `SpreadsheetSchema.OnSubmit` per call. Zero or less sends all rows in one call. |
 | `Columns` (init) | `IReadOnlyList<SpreadsheetColumnSchema>` | The columns to import, in display order. A column with `SpreadsheetColumnSchema.From` must come after its source. |
 | `Duplicates` (init) | `SpreadsheetDuplicatesPolicy` | How rows that repeat a key within the file are handled. Keys are compared trimmed and case-insensitively. Needs `SpreadsheetSchema.RowKeyField`. |

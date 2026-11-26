@@ -139,7 +139,7 @@ Load the stylesheets in `App.razor` or `wwwroot/index.html`, after the two style
 
 ## 6. Build the page
 
-`KlySpreadsheetImport` renders the five steps of the wizard (file, columns, values, review, import) for an importer you give it. Its first step lets users choose or drop a file (CSV, TSV, text or `.xlsx`, 10 MB at most by default, see `MaxFileSize`) or paste rows:
+`KlySpreadsheetImport` renders the five steps of the wizard (file, columns, values, review, import) for an importer you give it. Its first step lets users choose or drop a file (CSV, TSV, text, `.xlsx` or `.xls`, 10 MB at most by default, see `MaxFileSize`) or paste rows:
 
 ```razor
 @page "/prices/import"

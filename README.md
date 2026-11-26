@@ -161,7 +161,7 @@ In Blazor, give the same importer to `KlySpreadsheetImport`. Users choose or dro
 - `Klyroo.Spreadsheet.Core` targets `net10.0`, has no package dependencies and is marked `IsTrimmable` and `IsAotCompatible`.
 - `Klyroo.Spreadsheet` needs an interactive render mode (Interactive Server, WebAssembly or Auto): the component handles events through Blazor, so under Static SSR it renders but does not respond.
 - `Klyroo.Spreadsheet` declares the `browser`, `ios`, `android`, `maccatalyst` and `windows` platforms for .NET MAUI Blazor Hybrid.
-- Delimited text (CSV, TSV, semicolon-separated) and `.xlsx` workbooks are read. The legacy `.xls` format is not.
+- Delimited text (CSV, TSV, semicolon-separated), `.xlsx` workbooks and legacy `.xls` workbooks (Excel 97 to 2003) are read. Formulas are not evaluated, and password-protected or Excel 5.0/95 `.xls` files are refused.
 
 ## Klyroo ecosystem
 

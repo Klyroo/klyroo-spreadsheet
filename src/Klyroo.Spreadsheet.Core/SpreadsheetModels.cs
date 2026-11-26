@@ -301,7 +301,7 @@ public sealed class SpreadsheetSchema
 
     /// <summary>A name for the import for your own use. The importer does not read it.</summary>
     public string Key { get; init; } = "import";
-    /// <summary>The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing and only parses delimited text.</summary>
+    /// <summary>The file extensions the built-in component lists in its drop zone. They are display text: the importer enforces nothing, and <see cref="SpreadsheetImporter.LoadFileAsync"/> reads <c>.xlsx</c> and <c>.xls</c> workbooks and delimited text whatever this list says.</summary>
     public IReadOnlyList<string> Accept { get; init; } = [".xlsx", ".xls", ".csv", ".tsv"];
     /// <summary>The maximum number of data rows to import. Later rows are left out with <see cref="SpreadsheetDiscardReason.Limit"/>. No limit when <see langword="null"/>.</summary>
     public int? MaxRows { get; init; }
@@ -663,24 +663,23 @@ public sealed class SpreadsheetImporter
         LoadText(text, fileName);
 
     /// <summary>
-    /// Reads a file and loads it: an <c>.xlsx</c> workbook through <see cref="SpreadsheetXlsxReader"/>, anything else as
-    /// delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8.
+    /// Reads a file and loads it: an <c>.xlsx</c> workbook through <see cref="SpreadsheetXlsxReader"/>, a legacy <c>.xls</c>
+    /// workbook through <see cref="SpreadsheetXlsReader"/>, anything else as delimited text decoded as UTF-8 (with or without
+    /// a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. The content decides for the legacy format: a
+    /// file that starts with the OLE2 signature is read as <c>.xls</c> whatever its extension, and a zip archive named
+    /// <c>.xls</c> is read as <c>.xlsx</c>.
     /// </summary>
     /// <param name="content">The file content. It is copied to memory, so a browser or network stream can be passed as it is.</param>
-    /// <param name="fileName">The file name. Its extension selects the reader.</param>
+    /// <param name="fileName">The file name. Its extension selects the reader, except for a legacy workbook.</param>
     /// <param name="maxBytes">The largest file accepted, in bytes (10 MB by default).</param>
     /// <param name="cancellationToken">Cancels the copy.</param>
     /// <returns>A task that completes when the file is loaded.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, is an <c>.xls</c> file, or is not a valid <c>.xlsx</c> workbook.</exception>
+    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, is an <c>.xls</c> file that is not a readable workbook (damaged, encrypted, Excel 5.0/95, or text renamed), or is not a valid <c>.xlsx</c> workbook.</exception>
     public async Task LoadFileAsync(Stream content, string fileName, long maxBytes = 10 * 1024 * 1024, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        if (extension == ".xls")
-        {
-            throw new InvalidDataException("The .xls format is not supported. Save the file as .xlsx or .csv.");
-        }
 
         using var buffer = new MemoryStream();
         var chunk = new byte[81920];
@@ -695,6 +694,22 @@ public sealed class SpreadsheetImporter
         }
         buffer.Position = 0;
 
+        var head = buffer.GetBuffer().AsSpan(0, (int)Math.Min(buffer.Length, 8));
+        if (CompoundFile.HasSignature(head))
+        {
+            LoadWorkbook(SpreadsheetXlsReader.Read(buffer, fileName));
+            return;
+        }
+        if (extension == ".xls")
+        {
+            // A zip archive named .xls is an .xlsx. Anything else is not a workbook: HTML or text exports are often named .xls.
+            if (head.Length >= 4 && head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4)
+            {
+                LoadWorkbook(SpreadsheetXlsxReader.Read(buffer, fileName));
+                return;
+            }
+            throw new InvalidDataException("The file is not a valid .xls workbook. If it is a text or HTML export renamed .xls, save it as .xlsx or .csv.");
+        }
         if (extension == ".xlsx")
         {
             LoadWorkbook(SpreadsheetXlsxReader.Read(buffer, fileName));
