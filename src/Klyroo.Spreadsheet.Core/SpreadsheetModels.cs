@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace Klyroo.Spreadsheet;
 
@@ -188,11 +189,21 @@ public enum SpreadsheetValidationStatus
 
 // SpreadsheetOption, SpreadsheetRule, SpreadsheetColumnSchema and SpreadsheetSchema live in their own files.
 
-/// <summary>A rule the importer stopped evaluating because its matches timed out too often. See <see cref="SpreadsheetImporter.DisabledRules"/>.</summary>
+/// <summary>Why the importer stopped a rule.</summary>
+public enum SpreadsheetDisabledReason
+{
+    /// <summary>Its matches timed out too often.</summary>
+    Timeouts,
+    /// <summary>Its predicate threw too often.</summary>
+    Failures,
+}
+
+/// <summary>A rule the importer stopped evaluating because its matches timed out, or its predicate threw, too often. See <see cref="SpreadsheetImporter.DisabledRules"/>.</summary>
 /// <param name="ColumnKey">The key of the column the rule belongs to.</param>
 /// <param name="RuleCode">The <see cref="SpreadsheetRule.Code"/> of the rule.</param>
-/// <param name="Timeouts">The number of timeouts that stopped it.</param>
-public sealed record SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts);
+/// <param name="Timeouts">The number of timeouts and exceptions that stopped it (the one that came last decides <paramref name="Reason"/>).</param>
+/// <param name="Reason">Whether the rule was stopped for its timeouts or for its exceptions.</param>
+public sealed record SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts, SpreadsheetDisabledReason Reason = SpreadsheetDisabledReason.Timeouts);
 
 /// <summary>An issue found by <c>ValidateRowsAsync</c>, with the row it belongs to.</summary>
 /// <param name="RowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>
@@ -293,7 +304,7 @@ public sealed record SpreadsheetValueQuestion(
 
 /// <summary>A problem or note about a row or one of its cells.</summary>
 /// <param name="Field">The column key the issue relates to, or <see langword="null"/> for the whole row.</param>
-/// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c>, <c>row.failed</c> (the host's factory, setter, rule predicate or <c>ValidateRow</c> threw, the message is the exception's) and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
+/// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c>, <c>row.failed</c> (the host's factory, setter, rule predicate or <c>ValidateRow</c> threw; the message is generic and never the exception's text, which goes to <see cref="SpreadsheetImporter.Logger"/>) and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
 /// <param name="Level">The severity.</param>
 /// <param name="Message">The text of the issue in English. <c>KlySpreadsheetImport</c> shows it as it is when <paramref name="Args"/> is <see langword="null"/>.</param>
 /// <param name="Args">Set for the messages the library writes itself: the values the message contains (the cell text of a <c>number</c> issue, the row number of a <c>row.duplicate</c> issue), possibly none. With it, the component shows the message of the user's locale for the <paramref name="Code"/>, see <c>SpreadsheetTexts</c>. <see langword="null"/> for a message you wrote (a rule with your own text, <c>ValidateRow</c>, a server rejection), which is never replaced.</param>
@@ -432,12 +443,16 @@ public abstract partial class SpreadsheetImporter
     private IReadOnlyList<SpreadsheetValueQuestion> _questions = [];
 
     // Only SpreadsheetImporter<TRow> derives from this class.
-    private protected SpreadsheetImporter(SpreadsheetSchema schema)
+    private protected SpreadsheetImporter(SpreadsheetSchema schema, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(schema);
         Schema = schema;
+        Logger = logger;
         Recompute();
     }
+
+    /// <summary>Where the importer reports the exceptions your callbacks throw (the row factory, a property setter, a rule predicate or <c>ValidateRow</c>). The uploader never sees the text of such an exception, only a generic <c>row.failed</c> issue, so this is the one place it goes. One warning per rule, or one for the row callbacks, is written at the end of each read or edit, with the number of rows it failed on and the first exception. <see langword="null"/> (the default) reports nothing.</summary>
+    public ILogger? Logger { get; set; }
 
     /// <summary>Raised after every state change. The built-in component subscribes to it to re-render. Handlers run synchronously on the thread that made the change.</summary>
     public event Action? Changed;
@@ -1300,8 +1315,9 @@ public abstract partial class SpreadsheetImporter
     };
 
     // A rule that makes a regular expression time out (RegexMatchTimeoutException) fails instead of aborting the import. A predicate of the host
-    // that throws fails the cell too: failure carries its message, and the importer turns it into a row.failed issue like a throwing setter.
-    private static bool RunRule(SpreadsheetRule rule, object? value, out bool timedOut, out string? failure)
+    // that throws fails the cell too: failure carries the exception for the log, and the importer turns it into a generic row.failed issue like a
+    // throwing setter. A cancellation is not a failure of the rule and goes to the caller.
+    private static bool RunRule(SpreadsheetRule rule, object? value, out bool timedOut, out Exception? failure)
     {
         timedOut = false;
         failure = null;
@@ -1314,9 +1330,9 @@ public abstract partial class SpreadsheetImporter
             timedOut = true;
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            failure = ex.Message;
+            failure = ex;
             return false;
         }
     }

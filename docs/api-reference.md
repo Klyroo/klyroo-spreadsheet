@@ -4,7 +4,7 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Static classes and extensions (3) · Classes (10) · Records (20) · Structs (1) · Enums (14) · Delegates (1)
+Static classes and extensions (3) · Classes (10) · Records (20) · Structs (1) · Enums (15) · Delegates (1)
 
 ### Static classes and extensions
 
@@ -168,6 +168,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `InspectedRowIndex` | `int?` | The `SpreadsheetRow.Index` of the row open in the inspector, or `null`. |
 | `InvalidRows` | `IReadOnlyList<SpreadsheetRow>` | The rows with at least one error that are not discarded. The list is cached until a row changes. |
 | `LimitedRowCount` | `int` | The number of rows left out because they are past `SpreadsheetImporter.EffectiveMaxRows`. |
+| `Logger` (get, set) | `ILogger?` | Where the importer reports the exceptions your callbacks throw (the row factory, a property setter, a rule predicate or `ValidateRow`). The uploader never sees the text of such an exception, only a generic `row.failed` issue, so this is the one place it goes. One warning per rule, or one for the row callbacks, is written at the end of each read or edit, with the number of rows it failed on and the first exception. `null` (the default) reports nothing. |
 | `MappingLocked` | `bool` | `true` while a submit runs or once some rows were accepted: the column mapping, the sheet, the header row and the answers to value questions are then fixed, because the accepted rows were sent as they were read. Methods that would change them do nothing. `SpreadsheetImporter.ResetSubmit` (or loading another file) unlocks them. |
 | `MissingFields` | `IReadOnlyList<SpreadsheetFieldState>` | The fields with status `SpreadsheetColumnStatus.Missing`. Submission is blocked while this is not empty. |
 | `NeedsAsyncValidation` | `bool` | `true` when async checks are defined, a file is loaded, rows changed since they last completed, and no check is running or has failed (a failed run is repeated by `SpreadsheetImporter.ValidateAsync` or by `SpreadsheetImporter.SubmitAsync`). `KlySpreadsheetImport` runs the checks itself when this is `true` on the review step. |
@@ -254,7 +255,7 @@ The headless import engine for a row type. It is a `SpreadsheetImporter` whose s
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetImporter<TRow>(SpreadsheetSchema<TRow> schema)` | Creates an importer for a schema, with no file loaded. |
+| `SpreadsheetImporter<TRow>(SpreadsheetSchema<TRow> schema, ILogger? logger = null)` | Creates an importer for a schema, with no file loaded. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
@@ -398,17 +399,18 @@ A file column offered for a missing required column because its sample values lo
 
 `Klyroo.Spreadsheet` · record
 
-A rule the importer stopped evaluating because its matches timed out too often. See `SpreadsheetImporter.DisabledRules`.
+A rule the importer stopped evaluating because its matches timed out, or its predicate threw, too often. See `SpreadsheetImporter.DisabledRules`.
 
 | Constructor | Description |
 | :--- | :--- |
-| `SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts)` | A rule the importer stopped evaluating because its matches timed out too often. See `SpreadsheetImporter.DisabledRules`. |
+| `SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts, SpreadsheetDisabledReason Reason = Timeouts)` | A rule the importer stopped evaluating because its matches timed out, or its predicate threw, too often. See `SpreadsheetImporter.DisabledRules`. |
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `ColumnKey` (init) | `string` | The key of the column the rule belongs to. |
+| `Reason` (init) | `SpreadsheetDisabledReason` | Whether the rule was stopped for its timeouts or for its exceptions. |
 | `RuleCode` (init) | `string` | The `SpreadsheetRule.Code` of the rule. |
-| `Timeouts` (init) | `int` | The number of timeouts that stopped it. |
+| `Timeouts` (init) | `int` | The number of timeouts and exceptions that stopped it (the one that came last decides `Reason`). |
 
 #### `SpreadsheetFieldState`
 
@@ -579,7 +581,7 @@ A problem or note about a row or one of its cells.
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `Args` (init) | `IReadOnlyList<string>?` | Set for the messages the library writes itself: the values the message contains (the cell text of a `number` issue, the row number of a `row.duplicate` issue), possibly none. With it, the component shows the message of the user's locale for the `Code`, see `SpreadsheetTexts`. `null` for a message you wrote (a rule with your own text, `ValidateRow`, a server rejection), which is never replaced. |
-| `Code` (init) | `string` | A stable identifier. Built-in codes are `required`, `number`, `boolean`, `date`, `text`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `row.failed` (the host's factory, setter, rule predicate or `ValidateRow` threw, the message is the exception's) and `server`, plus the code of each failed `SpreadsheetRule`. |
+| `Code` (init) | `string` | A stable identifier. Built-in codes are `required`, `number`, `boolean`, `date`, `text`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `row.failed` (the host's factory, setter, rule predicate or `ValidateRow` threw; the message is generic and never the exception's text, which goes to `SpreadsheetImporter.Logger`) and `server`, plus the code of each failed `SpreadsheetRule`. |
 | `Field` (init) | `string?` | The column key the issue relates to, or `null` for the whole row. |
 | `Level` (init) | `SpreadsheetIssueLevel` | The severity. |
 | `Message` (init) | `string` | The text of the issue in English. `KlySpreadsheetImport` shows it as it is when `Args` is `null`. |
@@ -763,6 +765,17 @@ How a schema column relates to the loaded file. See `SpreadsheetFieldState.Statu
 | `Default` | No file column matches, but the column has a default value (`SpreadsheetColumnSchema.HasDefault`). |
 | `Missing` | No file column matches and the column is required without a default. The importer cannot submit until a column is assigned. |
 | `Unmatched` | No file column matches and the column is optional. Its cells are empty. |
+
+#### `SpreadsheetDisabledReason`
+
+`Klyroo.Spreadsheet` · enum
+
+Why the importer stopped a rule.
+
+| Value | Description |
+| :--- | :--- |
+| `Timeouts` | Its matches timed out too often. |
+| `Failures` | Its predicate threw too often. |
 
 #### `SpreadsheetDiscardReason`
 
@@ -1093,6 +1106,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `IssueRequired` (init) | `string` | The message of the `required` issue (`"Required value is missing"`). |
 | `IssueRowDuplicate` (init) | `Func<string, string>` | The message of the `row.duplicate` issue, given the number of the other row (`"Same key as row 4"`). |
 | `IssueRowExists` (init) | `string` | The message of the `row.exists` issue (`"Already stored"`). |
+| `IssueRowFailed` (init) | `string` | The message of the `row.failed` issue, which the library writes when a callback of yours (the row factory, a property setter, a rule predicate or `ValidateRow`) threw. It never contains the text of the exception, which goes to `SpreadsheetImporter.Logger` (`"The row could not be checked"`). |
 | `IssuesColumn` (init) | `string` | The heading of the last column of the invalid rows download (`"Issues"`). |
 | `IssueValueNotFound` (init) | `Func<string, string>` | The message of the `value.not-found` issue, given the cell text (`"\"Gold\" is not a known value"`). |
 | `IssueValueSkipped` (init) | `Func<string, string>` | The message of the `value.skipped` issue, given the cell text (`"Left out: \"Gold\" is set to skip its rows"`). |
@@ -1137,6 +1151,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `RowsWithErrors` (init) | `string` | The label of the statistic that counts the rows with errors (`"rows with errors"`). |
 | `RowsWithErrorsLeftOut` (init) | `Func<int, string>` | The hint of the review step, given the number of invalid rows (`"Rows with errors are left out: 4"`). |
 | `RuleDisabledNotice` (init) | `Func<string, string, string>` | The note shown when a rule was stopped because its matches kept timing out, given the column label and the rule code (`"The \"pattern\" check of Code was stopped after repeated timeouts. Its remaining values were not checked."`). |
+| `RuleFailedNotice` (init) | `Func<string, string, string>` | The note shown when a rule was stopped because its predicate kept throwing, given the column label and the rule code (`"The \"min\" check of Qty was stopped after repeated failures. Its remaining values were not checked."`). |
 | `SamplesText` (init) | `Func<string, string>` | The sample values of a mapped column, given the list (`"Samples: A-1, B-2"`). |
 | `SavedMappingApplied` (init) | `string` | The note shown when `SpreadsheetImporter.SavedMapping` was applied (`"Your saved column mapping was applied."`). |
 | `SearchPlaceholder` (init) | `string` | The placeholder of the search box (`"Search rows…"`). |

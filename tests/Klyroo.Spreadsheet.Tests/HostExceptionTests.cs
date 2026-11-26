@@ -27,7 +27,7 @@ public sealed class HostExceptionTests
         }));
 
     [Fact]
-    public void A_throwing_setter_is_a_row_issue_with_the_message_of_the_exception()
+    public void A_throwing_setter_is_a_row_issue_that_does_not_show_the_exception()
     {
         var importer = Importer();
 
@@ -37,7 +37,8 @@ public sealed class HostExceptionTests
         Assert.Empty(importer.AllRows[0].Issues);
         var issue = Assert.Single(importer.AllRows[1].Issues);
         Assert.Equal(SpreadsheetIssueLevel.Error, issue.Level);
-        Assert.Contains("Name refused", issue.Message, StringComparison.Ordinal);
+        Assert.Equal("row.failed", issue.Code);
+        Assert.DoesNotContain("Name refused", issue.Message, StringComparison.Ordinal);
         Assert.False(importer.AllRows[1].Importable);
         Assert.Equal(SpreadsheetRowStatus.Blocking, importer.AllRows[1].Status);
         Assert.Equal([0, 2], importer.ImportableRows.Select(r => r.Index));
@@ -51,7 +52,7 @@ public sealed class HostExceptionTests
         importer.LoadText("Name,Qty\na,1\nboom,2\nc,3", "f.csv");
 
         Assert.Equal(["a", "c"], importer.ImportableTypedRows.Select(r => r.Value.Name));
-        Assert.Contains("Name refused", Assert.Single(importer.AllRows[1].Issues).Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Name refused", Assert.Single(importer.AllRows[1].Issues).Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -78,18 +79,21 @@ public sealed class HostExceptionTests
         importer.LoadText("Name\na\nb\nc", "f.csv");
 
         Assert.Equal(3, importer.AllRows.Count);
-        Assert.All(importer.AllRows.Skip(1), r => Assert.Contains("No instance", Assert.Single(r.Issues).Message, StringComparison.Ordinal));
+        Assert.All(importer.AllRows.Skip(1), r => Assert.DoesNotContain("No instance", Assert.Single(r.Issues).Message, StringComparison.Ordinal));
+        Assert.All(importer.AllRows.Skip(1), r => Assert.Equal("row.failed", Assert.Single(r.Issues).Code));
     }
 
     [Fact]
-    public void A_throwing_ValidateRow_is_a_row_issue_too()
+    public void A_throwing_ValidateRow_is_a_row_issue_too_without_the_exception_text()
     {
         var importer = Importer(sb => sb.ValidateRow = row => row.Name == "bad" ? throw new ArgumentException("Cannot check this row") : []);
 
         importer.LoadText("Name,Qty\nok,1\nbad,2", "f.csv");
 
         Assert.Empty(importer.AllRows[0].Issues);
-        Assert.Contains("Cannot check this row", Assert.Single(importer.AllRows[1].Issues).Message, StringComparison.Ordinal);
+        var validateIssue = Assert.Single(importer.AllRows[1].Issues);
+        Assert.Equal("row.failed", validateIssue.Code);
+        Assert.DoesNotContain("Cannot check this row", validateIssue.Message, StringComparison.Ordinal);
         Assert.False(importer.AllRows[1].Importable);
     }
 
@@ -107,7 +111,7 @@ public sealed class HostExceptionTests
     }
 
     [Fact]
-    public void A_throwing_rule_predicate_is_a_row_issue_with_the_message_of_the_exception()
+    public void A_throwing_rule_predicate_is_a_row_issue_that_does_not_show_the_exception()
     {
         var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
         {
@@ -125,7 +129,7 @@ public sealed class HostExceptionTests
         Assert.Same(issue, importer.AllRows[1].Cells["Qty"].Issue);
         Assert.Null(importer.AllRows[1].Cells["Name"].Issue);
         Assert.Equal(SpreadsheetIssueLevel.Error, issue.Level);
-        Assert.Contains("Cannot check this quantity", issue.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Cannot check this quantity", issue.Message, StringComparison.Ordinal);
         Assert.False(importer.AllRows[1].Importable);
         Assert.Equal([0, 2], importer.ImportableRows.Select(r => r.Index));
     }
@@ -144,13 +148,13 @@ public sealed class HostExceptionTests
         importer.LoadText("Name,Qty\nx,1", "f.csv");
 
         var issues = importer.AllRows[0].Issues;
-        Assert.Contains(issues, i => i.Code == "row.failed" && i.Level == SpreadsheetIssueLevel.Error && i.Message.Contains("Soft rule broke", StringComparison.Ordinal));
+        Assert.Contains(issues, i => i.Code == "row.failed" && i.Level == SpreadsheetIssueLevel.Error && !i.Message.Contains("Soft rule broke", StringComparison.Ordinal));
         Assert.Contains(issues, i => i.Code == "long");
         Assert.False(importer.AllRows[0].Importable);
     }
 
     [Fact]
-    public void A_throwing_rule_does_not_fail_the_load_when_the_columns_are_guessed_from_the_values()
+    public void A_throwing_rule_does_not_fail_the_load_when_a_column_is_suggested_from_the_values()
     {
         var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
         {
@@ -158,9 +162,21 @@ public sealed class HostExceptionTests
             sb.Column(r => r.Qty, c => c.Rule("boom", "Boom", _ => throw new InvalidOperationException("always")));
         }));
 
-        var load = Record.Exception(() => importer.LoadText("Name,Qty\na,1", "f.csv"));
+        var load = Record.Exception(() => importer.LoadText("Name,Other\na,1\nb,2", "f.csv"));
 
         Assert.Null(load);
-        Assert.Contains("always", Assert.Single(importer.AllRows[0].Issues).Message, StringComparison.Ordinal);
+        Assert.Equal(2, importer.AllRows.Count);
+    }
+
+    [Fact]
+    public void A_rule_that_is_cancelled_is_not_a_row_issue()
+    {
+        var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
+        {
+            sb.Column(r => r.Name);
+            sb.Column(r => r.Qty, c => c.Rule("stop", "Stop", _ => throw new OperationCanceledException()));
+        }));
+
+        Assert.Throws<OperationCanceledException>(() => importer.LoadText("Name,Qty\na,1", "f.csv"));
     }
 }

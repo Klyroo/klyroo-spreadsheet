@@ -109,9 +109,60 @@ public abstract partial class SpreadsheetImporter
     /// <summary>The rules the importer stopped evaluating in the current read because their matches kept timing out (see <see cref="SpreadsheetSchema.RuleTimeoutLimit"/>). Values after the rule was stopped were not checked by it. Empty in the normal case.</summary>
     public IReadOnlyList<SpreadsheetDisabledRule> DisabledRules => _disabledRules;
 
+    // What the host's callbacks threw during the current pass (a read or an edit), by source, so the log gets one entry per rule with a count.
+    private sealed class HostFailure(string source, Exception first)
+    {
+        public string Source { get; } = source;
+        public Exception First { get; } = first;
+        public int Count { get; set; }
+        public bool Stopped { get; set; }
+    }
+
+    private readonly Dictionary<string, HostFailure> _passFailures = [];
+    private readonly HashSet<(string Column, int Rule)> _failedRules = [];
+
+    // The generic text the uploader sees when a callback of the host threw. The component shows the text of the user's locale for the code.
+    internal static SpreadsheetRowIssue RowFailedIssue(string? field) =>
+        new(field, "row.failed", SpreadsheetIssueLevel.Error, "The row could not be checked", []);
+
+    private void NoteHostFailure(string source, Exception exception, bool stopped = false)
+    {
+        if (!_passFailures.TryGetValue(source, out var failure))
+        {
+            failure = new HostFailure(source, exception);
+            _passFailures[source] = failure;
+        }
+        failure.Count++;
+        failure.Stopped |= stopped;
+    }
+
+    private void FlushHostFailures()
+    {
+        if (_passFailures.Count == 0) return;
+        var logger = Logger;
+        foreach (var failure in _passFailures.Values)
+        {
+            if (logger is not null) SpreadsheetLog.HostCallbackFailed(logger, failure.Source, failure.Count, failure.Stopped, failure.First);
+        }
+        _passFailures.Clear();
+    }
+
     private void Recompute()
     {
+        try
+        {
+            RecomputeCore();
+        }
+        finally
+        {
+            FlushHostFailures();
+        }
+    }
+
+    private void RecomputeCore()
+    {
         _ruleTimeouts.Clear();
+        _failedRules.Clear();
         _disabledRules.Clear();
         _asyncChecked.Clear();
         _asyncIssues.Clear();
@@ -398,7 +449,9 @@ public abstract partial class SpreadsheetImporter
                     {
                         // A stopped rule no longer runs its regex, but its values are not waved through: they get the same issue a timeout gets,
                         // so a hostile file cannot make the values after the limit importable.
-                        var skipped = new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time", ["timeout"]);
+                        var skipped = _failedRules.Contains((col.Key, ruleIndex))
+                            ? RowFailedIssue(col.Key)
+                            : new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time", ["timeout"]);
                         rowIssues.Add(skipped);
                         fieldIssue ??= skipped;
                         continue;
@@ -407,7 +460,17 @@ public abstract partial class SpreadsheetImporter
                     if (ruleFailure is not null)
                     {
                         // The rule could not decide, so the row cannot be trusted whatever the level of the rule: it is blocked like a row the host's setter refuses.
-                        var failed = new SpreadsheetRowIssue(col.Key, "row.failed", SpreadsheetIssueLevel.Error, ruleFailure);
+                        // The uploader gets the generic issue, the log gets the exception, and the circuit breaker of the timeouts stops a rule that keeps throwing.
+                        var failedCount = _ruleTimeouts.GetValueOrDefault((col.Key, ruleIndex)) + 1;
+                        _ruleTimeouts[(col.Key, ruleIndex)] = failedCount;
+                        _failedRules.Add((col.Key, ruleIndex));
+                        var stopsNow = Schema.RuleTimeoutLimit > 0 && failedCount == Schema.RuleTimeoutLimit;
+                        if (stopsNow)
+                        {
+                            _disabledRules.Add(new SpreadsheetDisabledRule(col.Key, rule.Code, failedCount, SpreadsheetDisabledReason.Failures));
+                        }
+                        NoteHostFailure($"the rule '{rule.Code}' of the column '{col.Key}'", ruleFailure, stopsNow);
+                        var failed = RowFailedIssue(col.Key);
                         rowIssues.Add(failed);
                         fieldIssue ??= failed;
                         continue;
@@ -436,7 +499,8 @@ public abstract partial class SpreadsheetImporter
             cellViews[col.Key] = new SpreadsheetCellView(cellText, originalText, displayText, hasEdit, defaulted, created, fieldIssue);
         }
 
-        var extraIssues = Schema.CheckRow(rowData);
+        var extraIssues = Schema.CheckRow(rowData, out var rowFailure);
+        if (rowFailure is not null) NoteHostFailure("the row factory, a property setter or ValidateRow", rowFailure);
         if (extraIssues is { Count: > 0 })
         {
             rowIssues.AddRange(extraIssues);
@@ -573,6 +637,18 @@ public abstract partial class SpreadsheetImporter
 
     /// <summary>Re-parses the given rows and updates everything that depends on them: the duplicate-key index (and the other rows of the keys concerned), the rows and, when asked or when their unknown values changed, the value questions.</summary>
     private void ReparseRows(IEnumerable<int> rowIndexes, bool alwaysRebuildQuestions)
+    {
+        try
+        {
+            ReparseRowsCore(rowIndexes, alwaysRebuildQuestions);
+        }
+        finally
+        {
+            FlushHostFailures();
+        }
+    }
+
+    private void ReparseRowsCore(IEnumerable<int> rowIndexes, bool alwaysRebuildQuestions)
     {
         var touched = new HashSet<int>();
         var unknownChanged = false;

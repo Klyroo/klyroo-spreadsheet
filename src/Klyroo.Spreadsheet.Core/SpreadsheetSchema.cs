@@ -72,7 +72,7 @@ public abstract class SpreadsheetSchema
     /// <summary>The number of keys passed to the existing-record lookup per call. Zero or less sends all keys in one call.</summary>
     public int LookupBatchSize { get; }
 
-    internal abstract IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data);
+    internal abstract IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data, out Exception? failure);
     internal abstract bool HasSubmit { get; }
     internal abstract Task<IReadOnlyList<SpreadsheetRejectedRow>?> SubmitBatchAsync(IReadOnlyList<SpreadsheetRow> batch, CancellationToken cancellationToken);
     internal abstract bool HasValidateRowsAsync { get; }
@@ -165,7 +165,7 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
         {
             return new SpreadsheetRow<TRow>(row, CreateValue(row.Data));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             throw new InvalidOperationException($"The typed value of row {row.RowNumber} cannot be built: {ex.Message}", ex);
         }
@@ -179,17 +179,20 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
     }
 
     // Builds the row the host will receive, so a factory or a setter that throws is found while the file is read, then runs ValidateRow. An exception
-    // of the host becomes an error issue on the row (code row.failed) instead of failing the load.
-    internal override IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data)
+    // of the host becomes an error issue on the row (code row.failed) instead of failing the load. The issue is generic: the text of the exception can
+    // hold anything (a path, a connection string) and goes to the log through failure, never to the uploader. A cancellation goes to the caller.
+    internal override IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data, out Exception? failure)
     {
+        failure = null;
         try
         {
             var value = CreateValue(data);
             return ValidateRow is { } validate ? validate(value) : null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return [new SpreadsheetRowIssue(null, "row.failed", SpreadsheetIssueLevel.Error, ex.Message)];
+            failure = ex;
+            return [SpreadsheetImporter.RowFailedIssue(null)];
         }
     }
 

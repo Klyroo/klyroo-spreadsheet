@@ -13,7 +13,8 @@ public sealed class SpreadsheetImporter<[DynamicallyAccessedMembers(DynamicallyA
     /// <summary>Creates an importer for a schema, with no file loaded.</summary>
     /// <param name="schema">The columns and policies of the import, from <see cref="SpreadsheetSchema.For{TRow}(Action{SpreadsheetSchemaBuilder{TRow}})"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <see langword="null"/>.</exception>
-    public SpreadsheetImporter(SpreadsheetSchema<TRow> schema) : base(schema ?? throw new ArgumentNullException(nameof(schema)))
+    /// <param name="logger">Receives the exceptions your callbacks throw, see <see cref="SpreadsheetImporter.Logger"/>. Optional.</param>
+    public SpreadsheetImporter(SpreadsheetSchema<TRow> schema, Microsoft.Extensions.Logging.ILogger? logger = null) : base(schema ?? throw new ArgumentNullException(nameof(schema)), logger)
     {
         Schema = schema;
     }

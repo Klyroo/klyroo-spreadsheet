@@ -142,6 +142,9 @@ public sealed record SpreadsheetTexts
     /// <summary>The note shown when a rule was stopped because its matches kept timing out, given the column label and the rule code (<c>"The \"pattern\" check of Code was stopped after repeated timeouts. Its remaining values were not checked."</c>).</summary>
     public Func<string, string, string> RuleDisabledNotice { get; init; } = (column, rule) => $"The \"{rule}\" check of {column} was stopped after repeated timeouts. Its remaining values were not checked.";
 
+    /// <summary>The note shown when a rule was stopped because its predicate kept throwing, given the column label and the rule code (<c>"The \"min\" check of Qty was stopped after repeated failures. Its remaining values were not checked."</c>).</summary>
+    public Func<string, string, string> RuleFailedNotice { get; init; } = (column, rule) => $"The \"{rule}\" check of {column} was stopped after repeated failures. Its remaining values were not checked.";
+
 
     // Columns step
     /// <summary>The button that accepts a suggested file column (<c>"Use it"</c>).</summary>
@@ -442,6 +445,9 @@ public sealed record SpreadsheetTexts
     /// <summary>The message of the <c>row.exists</c> issue (<c>"Already stored"</c>).</summary>
     public string IssueRowExists { get; init; } = "Already stored";
 
+    /// <summary>The message of the <c>row.failed</c> issue, which the library writes when a callback of yours (the row factory, a property setter, a rule predicate or <c>ValidateRow</c>) threw. It never contains the text of the exception, which goes to <see cref="Klyroo.Spreadsheet.SpreadsheetImporter.Logger"/> (<c>"The row could not be checked"</c>).</summary>
+    public string IssueRowFailed { get; init; } = "The row could not be checked";
+
     /// <summary>The message of a <c>pattern</c> issue raised because the check timed out (<c>"The format could not be checked in time"</c>).</summary>
     public string IssuePatternTimeout { get; init; } = "The format could not be checked in time";
 
@@ -480,6 +486,7 @@ public sealed record SpreadsheetTexts
             "value.skipped" => IssueValueSkipped(Arg(0)),
             "row.duplicate" => IssueRowDuplicate(Arg(0)),
             "row.exists" => IssueRowExists,
+            "row.failed" => IssueRowFailed,
             "pattern" => Arg(0) == "timeout" ? IssuePatternTimeout : IssuePattern,
             "email" => IssueEmail,
             "min" => IssueMin(Arg(0)),
