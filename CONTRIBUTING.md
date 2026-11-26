@@ -28,6 +28,18 @@ dotnet format Klyroo.Spreadsheet.slnx --include src/ tests/   # fix formatting o
 The build treats warnings as errors and nullable reference types are enabled everywhere: fix a warning instead
 of suppressing it, and justify any `#pragma` or `[SuppressMessage]` in the code.
 
+## Documentation site
+
+`README.md` and the pages of `docs/` are published as a site at https://klyroo.github.io/klyroo-spreadsheet/ by `.github/workflows/docs.yml`, on every push to `main` that touches them. The site reads the files as they are (the title of a page is its first heading), so edit the Markdown. What the Markdown cannot say is in `docs/site.yml`: the title and tagline of the home page, the install command, the NuGet packages linked from the header, the order and grouping of the pages and the accent color. The site itself is built from the klyroo-stack repository (`docs-site/`, whose README lists every setting).
+
+Preview it from the folder that holds this repository, `klyroo-stack` and `klyroo-ui`:
+
+```bash
+dotnet run -c Release --project klyroo-stack/docs-site/Klyroo.Docs.Site -- --repo klyroo-spreadsheet   # http://localhost:5000/
+```
+
+The build of the site stops on a link, an anchor or a file that leads nowhere, so a link to another page of `docs/` or to a file of the repository has to be right.
+
 ## Workflow
 
 1. **Discuss first** for anything larger than a bug fix: open an issue (or comment on an existing one) so the

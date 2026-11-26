@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Added
 
+- A documentation site at https://klyroo.github.io/klyroo-spreadsheet/, built from `README.md` and `docs/` and published by `.github/workflows/docs.yml` (the build is `docs-site/` of klyroo-stack). `docs/site.yml` sets the title, tagline, install command, NuGet packages, order of the pages and accent color; the Markdown files themselves are read as they are.
 - Scale: the importer updates only the rows a change concerns (`EditCell`, `RevertCell`, `AnswerValue`, `ClearAnswer`, `DiscardRows`, `RestoreRows`) instead of reading the whole file again, keeps an index of duplicate keys to re-check only the rows of the keys involved, and caches `ImportableRows`, `InvalidRows`, `DiscardedRows` and `VisibleReviewRows` until a row or a filter changes. Editing a cell of a 50,000-row file now takes milliseconds instead of about 400.
 - Paged review: `ReviewPageRows`, `ReviewPage`, `ReviewPageCount`, `ReviewPageSize`, `SetReviewPage`, `SetReviewPageSize` and `SpreadsheetImporter.DefaultReviewPageSize`. `KlySpreadsheetImport` renders one page of the review table (`PageSize`, 50 by default) with a pager made of buttons (first, previous, next, last, rows per page).
 - Row limit for the wizard: `KlySpreadsheetImport.MaxRows` (10,000 by default, `null` for no limit) applies when the schema has no `MaxRows`, and the component says how many rows were left out. Headless: `SpreadsheetImporter.DefaultMaxRows`, `EffectiveMaxRows` and `LimitedRowCount`.
