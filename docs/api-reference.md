@@ -4,7 +4,7 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Static classes and extensions (2) · Classes (4) · Records (16) · Enums (14)
+Static classes and extensions (2) · Classes (4) · Records (17) · Enums (14)
 
 ### Static classes and extensions
 
@@ -101,6 +101,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `CurrentSheet` | `SpreadsheetSheet?` | The sheet being imported: the selected one, otherwise the first. |
 | `CurrentStepKey` | `string` | The key of the wizard step in progress: `file`, `columns`, `values`, `review` or `submit`. |
 | `DefaultMaxRows` (get, set) | `int?` | A row limit that applies when `SpreadsheetSchema.MaxRows` is `null`. `null` (the default) means no limit. `KlySpreadsheetImport` sets it from its `MaxRows` parameter. Rows past the limit are left out with `SpreadsheetDiscardReason.Limit`. |
+| `DisabledRules` | `IReadOnlyList<SpreadsheetDisabledRule>` | The rules the importer stopped evaluating in the current read because their matches kept timing out (see `SpreadsheetSchema.RuleTimeoutLimit`). Values after the rule was stopped were not checked by it. Empty in the normal case. |
 | `DiscardedRows` | `IReadOnlyList<SpreadsheetRow>` | The rows left out of the import for any reason. The list is cached until a row changes. |
 | `EffectiveMaxRows` | `int?` | The row limit in force: `SpreadsheetSchema.MaxRows` when set, otherwise `SpreadsheetImporter.DefaultMaxRows`. `null` when there is no limit. |
 | `Fields` | `IReadOnlyList<SpreadsheetFieldState>` | The mapping state of every schema column, in schema order. |
@@ -237,6 +238,7 @@ Describes an import: its columns and the policies for limits, duplicates, existi
 | `OnSubmit` (init) | `Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | Receives each batch of importable rows and returns the rows the server refused, or `null` or an empty list when all were accepted. If it throws, the submit stops with `SpreadsheetSubmitStatus.Error`. |
 | `OnSubmitAsync` (init) | `Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>?` | The cancellable form of `SpreadsheetSchema.OnSubmit`: it also receives a `CancellationToken` that is cancelled by `SpreadsheetImporter.CancelSubmit` (the Cancel button of the component) or by the token passed to `SpreadsheetImporter.SubmitAsync`. A batch that throws `OperationCanceledException` counts as not accepted, so make the call safe to repeat. When both are set, this one is used. |
 | `RowKeyField` (init) | `string?` | The `SpreadsheetColumnSchema.Key` of the column that identifies a row. It enables the duplicate and existing-record checks. |
+| `RuleTimeoutLimit` (init) | `int` | How many match timeouts one rule may cause in a file before the importer stops evaluating it (a circuit breaker, so a hostile file cannot cost one `SpreadsheetRule.DefaultPatternTimeout` per cell). The rule is then listed once in `SpreadsheetImporter.DisabledRules` and the component shows a notice. Defaults to 3. Zero or less never stops a rule. |
 | `ValidateBatchSize` (init) | `int` | The number of rows passed to `SpreadsheetSchema.ValidateRowsAsync` per call. Zero or less sends all rows in one call. Defaults to 500. |
 | `ValidateRow` (init) | `Func<IReadOnlyDictionary<string, object?>, IReadOnlyList<SpreadsheetRowIssue>>?` | A cross-field check run on every row after the column rules. It receives the parsed values by column key and returns extra issues, which are added to the row. |
 | `ValidateRowsAsync` (init) | `Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetIndexedIssue>?>>?` | A batched check that needs the host, for example "do these SKUs exist". It receives rows that are not discarded and have no error, `SpreadsheetSchema.ValidateBatchSize` at a time, and returns the issues it found with the index of their row, or `null` or an empty list for none. See `SpreadsheetImporter.ValidateAsync` for when it runs. |
@@ -278,6 +280,22 @@ A file column offered for a missing required column because its sample values lo
 | `HeaderIndex` (init) | `int` | The index to pass to `SpreadsheetImporter.AssignColumn`. |
 | `HeaderText` (init) | `string` | The header text of the suggested file column. |
 | `Samples` (init) | `IReadOnlyList<string>` | Up to three distinct sample values from that column. |
+
+#### `SpreadsheetDisabledRule`
+
+`Klyroo.Spreadsheet` · record
+
+A rule the importer stopped evaluating because its matches timed out too often. See `SpreadsheetImporter.DisabledRules`.
+
+| Constructor | Description |
+| :--- | :--- |
+| `SpreadsheetDisabledRule(string ColumnKey, string RuleCode, int Timeouts)` | A rule the importer stopped evaluating because its matches timed out too often. See `SpreadsheetImporter.DisabledRules`. |
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `ColumnKey` (init) | `string` | The key of the column the rule belongs to. |
+| `RuleCode` (init) | `string` | The `SpreadsheetRule.Code` of the rule. |
+| `Timeouts` (init) | `int` | The number of timeouts that stopped it. |
 
 #### `SpreadsheetFieldState`
 
@@ -750,6 +768,7 @@ Components (1) · Static classes and extensions (2) · Classes (1) · Records (2
 | `MaxFileSize` | `long` | The largest file users can choose, in bytes. Defaults to 10 MB. |
 | `MaxRows` | `int?` | The most rows an import takes when `SpreadsheetSchema.MaxRows` is not set, 10,000 by default. Rows past the limit are left out and the component says how many. `null` removes the limit. A `SpreadsheetSchema.MaxRows` in the schema wins over this value. |
 | `OnDownload` | `EventCallback<SpreadsheetDownload>` | Called with the file when the user chooses to download the template or the invalid rows, instead of the browser download. Set it in .NET MAUI Blazor Hybrid, or to save the file your own way: the component then makes no JavaScript call. |
+| `OnMappingProfileChanged` | `EventCallback<SpreadsheetMappingProfile>` | Called with the current `SpreadsheetMappingProfile` when the user changes the column mapping or answers a value question (and when your code does it through the importer), so the app can store it and give it back through `SpreadsheetImporter.SavedMapping`. It is not called when a file is loaded or when a saved mapping is applied automatically. |
 | `PageSize` | `int` | The number of rows the review table shows per page, 50 by default. Users can change it with the page size list of the pager. |
 | `Title` | `string?` | The heading shown above the wizard. Defaults to the word Import in the language of the locale (`SpreadsheetTexts.Import`). Your text is shown as it is. |
 | `Wizard` | `bool` | Shows the step bar and the Back, Continue and Import buttons. When `false` only the current step is rendered and your code moves between steps with the importer's step methods. |
@@ -942,6 +961,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `RowsToImport` (init) | `string` | The label of the statistic that counts the rows to import (`"rows to import"`). |
 | `RowsWithErrors` (init) | `string` | The label of the statistic that counts the rows with errors (`"rows with errors"`). |
 | `RowsWithErrorsLeftOut` (init) | `Func<int, string>` | The hint of the review step, given the number of invalid rows (`"Rows with errors are left out: 4"`). |
+| `RuleDisabledNotice` (init) | `Func<string, string, string>` | The note shown when a rule was stopped because its matches kept timing out, given the column label and the rule code (`"The \"pattern\" check of Code was stopped after repeated timeouts. Its remaining values were not checked."`). |
 | `SamplesText` (init) | `Func<string, string>` | The sample values of a mapped column, given the list (`"Samples: A-1, B-2"`). |
 | `SavedMappingApplied` (init) | `string` | The note shown when `SpreadsheetImporter.SavedMapping` was applied (`"Your saved column mapping was applied."`). |
 | `SearchPlaceholder` (init) | `string` | The placeholder of the search box (`"Search rows…"`). |

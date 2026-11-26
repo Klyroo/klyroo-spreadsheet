@@ -605,6 +605,9 @@ public sealed partial class SpreadsheetImporter
     /// <summary>Raised after every state change. The built-in component subscribes to it to re-render. Handlers run synchronously on the thread that made the change.</summary>
     public event Action? Changed;
 
+    /// <summary>Raised, after <see cref="Changed"/>, when the user's mapping changes: <see cref="AssignColumn"/>, <see cref="IgnoreColumn"/>, <see cref="ResetColumn"/>, <see cref="AnswerValue"/>, <see cref="ClearAnswer"/> and an applied <see cref="ApplyMappingProfile"/>. Not raised by loading a file or by an automatic match. Read <see cref="GetMappingProfile"/> in the handler to persist it.</summary>
+    public event Action? MappingChanged;
+
     /// <summary>The schema this importer was created with.</summary>
     public SpreadsheetSchema Schema { get; }
     /// <summary>Whether a workbook with at least one sheet is loaded.</summary>
@@ -874,6 +877,7 @@ public sealed partial class SpreadsheetImporter
         _manualColumns[fieldKey] = headerIndex;
         Recompute();
         Changed?.Invoke();
+        MappingChanged?.Invoke();
     }
 
     /// <summary>Declares that a schema column is not in the file, overriding automatic matching. A required column then becomes missing.</summary>
@@ -883,6 +887,7 @@ public sealed partial class SpreadsheetImporter
         _manualColumns[fieldKey] = null;
         Recompute();
         Changed?.Invoke();
+        MappingChanged?.Invoke();
     }
 
     /// <summary>Removes a manual choice made by <see cref="AssignColumn"/> or <see cref="IgnoreColumn"/> so the column is matched by header again.</summary>
@@ -892,6 +897,7 @@ public sealed partial class SpreadsheetImporter
         _manualColumns.Remove(fieldKey);
         Recompute();
         Changed?.Invoke();
+        MappingChanged?.Invoke();
     }
 
     /// <summary>Answers an unknown select value for every row that contains it. A user answer overrides the column's policy.</summary>
@@ -904,6 +910,7 @@ public sealed partial class SpreadsheetImporter
         _valueAnswers[key] = answer;
         ReparseAnswered(key);
         Changed?.Invoke();
+        MappingChanged?.Invoke();
     }
 
     /// <summary>Removes a user answer so the value falls back to the column's policy.</summary>
@@ -915,6 +922,7 @@ public sealed partial class SpreadsheetImporter
         _valueAnswers.Remove(key);
         ReparseAnswered(key);
         Changed?.Invoke();
+        MappingChanged?.Invoke();
     }
 
     /// <summary>Replaces the text of one cell and revalidates that row (and, when the edit changes the row key, the other rows that share the old or the new key). The edit applies in the importer only and never changes the source file. It also clears a server rejection of that row.</summary>

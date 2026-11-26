@@ -73,6 +73,7 @@ public sealed partial class SpreadsheetImporter
         {
             Recompute();
             Changed?.Invoke();
+            MappingChanged?.Invoke();
         }
         return result;
     }

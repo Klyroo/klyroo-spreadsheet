@@ -29,6 +29,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Circuit breaker for rules: a rule whose matches time out `SpreadsheetSchema.RuleTimeoutLimit` times (3 by default, zero or less disables it) is no longer evaluated for the rest of the read and is listed once in `SpreadsheetImporter.DisabledRules` (`SpreadsheetDisabledRule`), instead of costing one timeout per cell. The component shows one notice naming the rule, translated in the 12 locales (`SpreadsheetTexts.RuleDisabledNotice`).
 
+- `KlySpreadsheetImport.OnMappingProfileChanged` (`EventCallback<SpreadsheetMappingProfile>`) and the importer's `MappingChanged` event: raised when the user maps or ignores a column, undoes a choice, answers a value question, or an applied `ApplyMappingProfile`, so the app can persist the profile for `SavedMapping`. Loading a file or an automatic match does not raise it.
+
 ### Changed
 
 - `SubmitAsync` no longer starts `ImportedCount` again from zero and resends every importable row: it resumes with the rows that were not accepted (a second call after a complete submit sends nothing; `ResetSubmit()` sends everything again). The rejections of the batches that finished are kept when a later batch throws. The old behavior was the bug: a retry after a failed batch sent the accepted batches again.

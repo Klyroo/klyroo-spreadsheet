@@ -409,7 +409,20 @@ Console.WriteLine(next.SavedMappingApplied);            // true: the columns are
 
 The profile is applied whenever a file is loaded, or the user picks another sheet or header row, and every header it maps is present in the file (compared like column matching: case, accents and a trailing `*` ignored, any order, extra file columns allowed). It also helps to find the header row: a row whose headers the profile maps counts as a header row, so a renamed header under a banner is found. A file that does not match is read as usual, and the user can still change any choice, which wins over the profile. A profile made for another `SpreadsheetSchema.Key`, or of another `Version`, is never applied. `KlySpreadsheetImport` says "Your saved column mapping was applied" when it was. Use `ApplyMappingProfile(profile)` to apply one yourself and read what it did, and `MatchesMappingProfile(profile)` to test a file without applying anything.
 
-**Storing it.** `ToJson` and `FromJson` use `SpreadsheetMappingProfileJsonContext`, a source-generated `System.Text.Json` context, so they work under trimming and NativeAOT with no reflection. To store a profile inside your own JSON document, add `[JsonSerializable(typeof(SpreadsheetMappingProfile))]` to your own context. Save it after the import succeeds (`SubmitStatus` is `Done`) or when the user leaves the columns step: the importer raises `Changed` after each of these, so subscribe to it, or call `GetMappingProfile()` where your `OnSubmit` finishes. Do not store it in the browser for data that should follow the user across devices; a profile is small, so a row per user and schema is enough.
+**Knowing when to store it.** `KlySpreadsheetImport` has an `OnMappingProfileChanged` callback (`EventCallback<SpreadsheetMappingProfile>`) that receives the current profile each time the user maps a column, declares one absent, undoes a choice or answers a value question. Persist it there and give it back through `SavedMapping` next time:
+
+```razor
+<KlySpreadsheetImport Importer="_importer" OnMappingProfileChanged="SaveProfileAsync" />
+
+@code {
+    private Task SaveProfileAsync(SpreadsheetMappingProfile profile) =>
+        store.SaveAsync(userId, "people", profile.ToJson());   // your storage
+}
+```
+
+It is not called when a file is loaded or when a saved mapping is applied automatically, so loading a file never overwrites what you stored. Headless, the importer's `MappingChanged` event does the same, after `Changed`: read `GetMappingProfile()` in the handler. Cell edits, discards and filters do not raise it.
+
+**Storing it.** `ToJson` and `FromJson` use `SpreadsheetMappingProfileJsonContext`, a source-generated `System.Text.Json` context, so they work under trimming and NativeAOT with no reflection. To store a profile inside your own JSON document, add `[JsonSerializable(typeof(SpreadsheetMappingProfile))]` to your own context. Save it from `OnMappingProfileChanged`, or call `GetMappingProfile()` where your `OnSubmit` finishes. Do not store it in the browser for data that should follow the user across devices; a profile is small, so a row per user and schema is enough.
 
 ## Translate the wizard and its messages
 
