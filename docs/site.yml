@@ -32,44 +32,10 @@ accent: "#14b8a6"
 # The texture of the ground behind the header and the hero: blueprint-grid, dot-matrix, ruled-rows, baseline-grid, chart-ticks, halftone, cell-grid or node-dots.
 texture: cell-grid
 
-# What the hero demonstrates. Either board: table | form (a board with feature chips and several results, authored in docs-site), or a simple hero: the code,
-# the lines the leader line starts at (focus) and one result (output: lines of text, or preview: ui-settings | display-stat | spreadsheet-rows).
+# What the hero demonstrates: the board of the library, with feature chips and several results (authored in klyroo-stack/docs-site).
 demo:
-  file: Program.cs
-  language: csharp
-  focus: 19-25
-  code: |
-    var schema = SpreadsheetSchema.For<PriceRow>(s =>
-    {
-        s.Column(r => r.Sku, c => c
-            .Label("SKU").Required());
-        s.Column(r => r.Price, c => c
-            .Label("Unit price")
-            .DecimalSeparator(',')
-            .Required()
-            .Rule(SpreadsheetRule.Min(0m)));
-        s.Column(r => r.Currency, c => c.Options(
-        [
-            new SpreadsheetOption<Currency>(
-                Currency.Eur, "Euro", ["€"]),
-            new SpreadsheetOption<Currency>(
-                Currency.Usd, "US dollar", ["$"]),
-        ]));
-    });
+  board: spreadsheet
 
-    var importer = new SpreadsheetImporter<PriceRow>(schema);
-    importer.LoadText(
-        "SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD",
-        "prices.csv");
-
-    Console.WriteLine(importer.ImportableRows.Count);
-    Console.WriteLine(importer.InvalidRows.Count);
-  result:
-    title: The rows of prices.csv
-    preview: spreadsheet-rows
-
-# The pages in the order of the navigation. docs/README.md comes first, as "Documentation". A page that is not listed follows, by file name.
-# An entry is a file name below docs/ without .md, or a map with page and any of: title, navTitle, description, tocDepth, indexText. A group has a group name and its pages.
 nav:
   - group: Tutorial
     pages:
