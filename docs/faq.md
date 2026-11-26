@@ -55,6 +55,7 @@ The page is rendered with Static SSR. The component needs an interactive render 
 
 ## Known limitations
 
+- **Workbook size.** Besides `maxBytes`, a workbook is refused when it holds more than 2,000,000 cells, counting the empty cells left of each value (a value in column Z costs 26 cells on its row), or more than 32 million characters of text. The limits keep a small hostile file from holding gigabytes of memory, which matters most when the import runs on the server (Interactive Server). Save a larger sheet as `.csv`, which is read without them.
 - **No formula evaluation, no encrypted or Excel 5.0/95 `.xls`.** `.xlsx` and `.xls` cells give the value Excel saved. Password-protected workbooks and `.xls` files in the BIFF5 format (Excel 5.0 and 95) are refused.
 - **English only.** Labels in the component and the messages of issues created by the importer are English. Rule messages and labels are the text you give.
 - **No rollback.** If `OnSubmit` throws midway, batches already accepted stay accepted and the importer does not say which.

@@ -46,6 +46,7 @@ public static class SpreadsheetXlsReader
         if (stream.CanSeek)
         {
             var remaining = stream.Length - stream.Position;
+            if (remaining <= 0) throw new InvalidDataException("The .xls file is empty.");
             if (remaining > MaxFileLength) throw new InvalidDataException("The .xls file is too large.");
             var bytes = new byte[remaining];
             stream.ReadExactly(bytes);

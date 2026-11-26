@@ -114,9 +114,28 @@ internal sealed class CompoundFile
         return file;
     }
 
-    /// <summary>Finds a stream by name, ignoring case.</summary>
-    internal CompoundEntry? FindStream(string name) =>
-        Entries.FirstOrDefault(e => e.Type == 2 && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Finds a stream of the root storage by name, ignoring case. Only the root's own tree is walked: a stream of the same name
+    /// inside a sub-storage (an embedded workbook in an <c>MBD...</c> storage) is not the file's.
+    /// </summary>
+    internal CompoundEntry? FindStream(string name)
+    {
+        var seen = new bool[Entries.Count];
+        var pending = new Stack<uint>();
+        pending.Push(Entries[0].Child);
+        while (pending.Count > 0)
+        {
+            var id = pending.Pop();
+            // A damaged tree may point outside the directory or back at an entry already seen.
+            if (id >= Entries.Count || seen[id]) continue;
+            seen[id] = true;
+            var entry = Entries[(int)id];
+            if (entry.Type == 2 && string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase)) return entry;
+            pending.Push(entry.Left);
+            pending.Push(entry.Right);
+        }
+        return null;
+    }
 
     /// <summary>Reads a whole stream, at most <paramref name="maxLength"/> bytes.</summary>
     internal byte[] ReadStream(CompoundEntry entry, long maxLength)
@@ -145,7 +164,8 @@ internal sealed class CompoundFile
             var size = _version4
                 ? BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(o + 120))
                 : BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 120));
-            Entries.Add(new CompoundEntry(name, bytes[o + 66], BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 116)), size > long.MaxValue ? long.MaxValue : (long)size));
+            Entries.Add(new CompoundEntry(name, bytes[o + 66], BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 116)), size > long.MaxValue ? long.MaxValue : (long)size,
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 68)), BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 72)), BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o + 76))));
         }
         if (Entries[0].Type != 5) throw new InvalidDataException("The .xls file is corrupt: the directory has no root entry.");
     }
@@ -227,4 +247,5 @@ internal sealed class CompoundFile
 }
 
 /// <summary>A directory entry of a compound file: 1 storage, 2 stream, 5 root.</summary>
-internal sealed record CompoundEntry(string Name, byte Type, uint Start, long Size);
+// Left, Right and Child are directory indexes: the siblings of an entry form a red-black tree under their storage's Child.
+internal sealed record CompoundEntry(string Name, byte Type, uint Start, long Size, uint Left, uint Right, uint Child);

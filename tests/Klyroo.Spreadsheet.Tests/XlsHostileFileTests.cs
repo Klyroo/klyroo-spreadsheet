@@ -187,4 +187,60 @@ public sealed class XlsHostileFileTests
             Assert.True(exception is null or InvalidDataException, $"round {round}: {exception}");
         }
     }
+
+    [Fact]
+    public void Values_in_a_far_column_cannot_hold_much_more_memory_than_the_file()
+    {
+        // One small RK record per row in the last column: each row would keep 256 cells.
+        var cells = Enumerable.Range(0, 8000).Select(row => Biff.Rk(row, 255, 0, Biff.RkInt(1))).ToArray();
+        var book = new XlsBook();
+        book.Sheets.Add(new XlsSheet("S", Biff.Cat(cells)));
+
+        var error = Assert.Throws<InvalidDataException>(() => Read(book.BuildFile()));
+        Assert.Contains("cells", error.Message);
+    }
+
+    [Fact]
+    public void An_xlsx_with_values_in_a_far_column_is_refused_the_same_way()
+    {
+        var stream = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            void Add(string path, string xml)
+            {
+                using var writer = new StreamWriter(zip.CreateEntry(path).Open());
+                writer.Write(xml);
+            }
+            const string main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            Add("xl/workbook.xml", $"""<workbook xmlns="{main}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>""");
+            Add("xl/_rels/workbook.xml.rels", """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>""");
+            var rows = string.Concat(Enumerable.Range(1, 130).Select(r => $"""<row r="{r}"><c r="XFD{r}"><v>1</v></c></row>"""));
+            Add("xl/worksheets/sheet1.xml", $"""<worksheet xmlns="{main}"><sheetData>{rows}</sheetData></worksheet>""");
+        }
+        stream.Position = 0;
+
+        var error = Assert.Throws<InvalidDataException>(() => SpreadsheetXlsxReader.Read(stream, "far.xlsx"));
+        Assert.Contains("cells", error.Message);
+    }
+
+    [Fact]
+    public void The_workbook_of_the_file_wins_over_an_embedded_one_listed_first()
+    {
+        var embedded = new XlsBook();
+        embedded.Sheets.Add(new XlsSheet("Embedded", Biff.Label(0, 0, 0, "inner")));
+        var real = new XlsBook();
+        real.Sheets.Add(new XlsSheet("Real", Biff.Label(0, 0, 0, "outer")));
+
+        var file = Cfb.Build([("MBD0001", []), ("Workbook", embedded.BuildBiffStream()), ("Workbook", real.BuildBiffStream())], firstIsStorage: true);
+
+        Assert.Equal("Real", Assert.Single(Read(file).Sheets).Name);
+    }
+
+    [Fact]
+    public void A_stream_positioned_past_its_end_is_refused_as_invalid_data()
+    {
+        var stream = new MemoryStream(SmallBook().BuildFile()) { Position = 1_000_000 };
+
+        Assert.Throws<InvalidDataException>(() => SpreadsheetXlsReader.Read(stream, "moved.xls"));
+    }
 }

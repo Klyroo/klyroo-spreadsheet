@@ -13,7 +13,6 @@ internal sealed class BiffWorkbookReader(byte[] data)
     private const ushort LabelSst = 0x00FD, Label = 0x0204, RString = 0x00D6, Number = 0x0203, Rk = 0x027E, MulRk = 0x00BD;
     private const ushort BoolErr = 0x0205, Formula = 0x0006, StringRecord = 0x0207;
     private const int MaxRow = 65535, MaxColumn = 255, MaxSheets = 4096;
-    private const long MaxTextLength = 128L * 1024 * 1024;
 
     private readonly List<string> _sharedStrings = [];
     private readonly Dictionary<int, string> _formats = [];
@@ -21,7 +20,7 @@ internal sealed class BiffWorkbookReader(byte[] data)
     private readonly List<(string Name, long Offset)> _sheets = [];
     private bool[] _dateXf = [];
     private bool _date1904;
-    private long _budget = MaxTextLength;
+    private readonly SpreadsheetReadBudget _budget = new();
 
     internal SpreadsheetWorkbook Read(string fileName)
     {
@@ -263,17 +262,11 @@ internal sealed class BiffWorkbookReader(byte[] data)
     private void Put(Dictionary<int, List<string>> rows, int row, int column, string text)
     {
         if (row > MaxRow || column > MaxColumn) throw new InvalidDataException("The .xls file is corrupt: a cell lies outside the 65536 x 256 grid of the format.");
-        Spend(text.Length);
         if (!rows.TryGetValue(row, out var cells)) rows[row] = cells = [];
-        while (cells.Count <= column) cells.Add("");
-        cells[column] = text.Trim();
+        _budget.Place(cells, column, text.Trim());
     }
 
-    private void Spend(int length)
-    {
-        _budget -= length;
-        if (_budget < 0) throw new InvalidDataException("The workbook holds too much text.");
-    }
+    private void Spend(int length) => _budget.AddText(length);
 
     // The raw value of a number cell as text, the way the .xlsx reader gives it: a date when the cell's format is one.
     private string NumberText(double value, int xf)

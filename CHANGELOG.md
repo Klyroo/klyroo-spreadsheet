@@ -21,6 +21,7 @@ All notable changes to this project are documented in this file. The format foll
 - A step skipped because it had nothing to resolve, such as the columns step, can be reopened from the step bar to re-map a column.
 - An issue filter of `|code` matches issues on the whole row, such as `row.duplicate`.
 - A `Number` cell with a misplaced thousands separator, such as `12,50` with `DecimalSeparator = '.'`, is now rejected with a `number` issue instead of being read as `1250`.
+- `SpreadsheetXlsxReader` padded each row up to its last value with no limit, so a small file with values in a far column (`XFD`) could hold gigabytes of memory, and its shared strings were only bounded by the 256 MB part size. Both workbook readers now refuse more than 2,000,000 cells (padding included) or 32 million characters of text.
 - A cell formatted as an elapsed time (`[h]:mm`, `[mm]:ss`, built-in format 46) is read as its number of days, like other numbers, instead of as a date.
 - `ExportInvalidRowsCsv` wrote the file's own headers above values in schema order, so columns were shifted when the file used another order. Headers now follow the schema columns.
 

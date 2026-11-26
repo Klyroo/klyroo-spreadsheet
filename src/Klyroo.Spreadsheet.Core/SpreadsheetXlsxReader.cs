@@ -44,7 +44,8 @@ public static class SpreadsheetXlsxReader
             var workbook = Entry(zip, "xl/workbook.xml") ?? throw new InvalidDataException("The file is not an .xlsx workbook: xl/workbook.xml is missing.");
             var (sheetRefs, date1904) = ReadWorkbook(workbook);
             var targets = ReadRelationships(Entry(zip, "xl/_rels/workbook.xml.rels"));
-            var sharedStrings = ReadSharedStrings(Entry(zip, "xl/sharedStrings.xml"));
+            var budget = new SpreadsheetReadBudget();
+            var sharedStrings = ReadSharedStrings(Entry(zip, "xl/sharedStrings.xml"), budget);
             var dateStyles = ReadDateStyles(Entry(zip, "xl/styles.xml"));
 
             var sheets = new List<SpreadsheetSheet>();
@@ -54,7 +55,7 @@ public static class SpreadsheetXlsxReader
                 var path = target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target;
                 var part = Entry(zip, path);
                 if (part is null || !path.Contains("worksheets/", StringComparison.OrdinalIgnoreCase)) continue;
-                sheets.Add(ReadSheet(part, name, sharedStrings, dateStyles, date1904));
+                sheets.Add(ReadSheet(part, name, sharedStrings, dateStyles, date1904, budget));
             }
             if (sheets.Count == 0) throw new InvalidDataException("The workbook has no worksheet.");
             return new SpreadsheetWorkbook(fileName, sheets) { InvariantNumbers = true };
@@ -119,7 +120,7 @@ public static class SpreadsheetXlsxReader
         return map;
     }
 
-    private static List<string> ReadSharedStrings(ZipArchiveEntry? entry)
+    private static List<string> ReadSharedStrings(ZipArchiveEntry? entry, SpreadsheetReadBudget budget)
     {
         var strings = new List<string>();
         if (entry is null) return strings;
@@ -148,6 +149,7 @@ public static class SpreadsheetXlsxReader
                         // ReadElementContentAsString leaves the reader on the next node, which may be the </si>.
                         if (xml.NodeType == XmlNodeType.EndElement && xml.LocalName == "si")
                         {
+                            budget.AddText(current.Length);
                             strings.Add(current.ToString());
                             current = null;
                         }
@@ -159,6 +161,7 @@ public static class SpreadsheetXlsxReader
                 if (xml.LocalName == "rPh") phoneticDepth--;
                 else if (xml.LocalName == "si" && current is not null)
                 {
+                    budget.AddText(current.Length);
                     strings.Add(current.ToString());
                     current = null;
                 }
@@ -209,7 +212,7 @@ public static class SpreadsheetXlsxReader
         return result;
     }
 
-    private static SpreadsheetSheet ReadSheet(ZipArchiveEntry entry, string name, List<string> sharedStrings, HashSet<int> dateStyles, bool date1904)
+    private static SpreadsheetSheet ReadSheet(ZipArchiveEntry entry, string name, List<string> sharedStrings, HashSet<int> dateStyles, bool date1904, SpreadsheetReadBudget budget)
     {
         var rows = new List<IReadOnlyList<string>>();
         var rowNumbers = new List<int>();
@@ -240,8 +243,7 @@ public static class SpreadsheetXlsxReader
         {
             if (cells is null) return;
             var text = CellText(cellType, cellStyle, cellValue, sharedStrings, dateStyles, date1904).Trim();
-            while (cells.Count <= cellColumn) cells.Add("");
-            cells[cellColumn] = text;
+            budget.Place(cells, cellColumn, text);
             nextColumn = cellColumn + 1;
             inCell = false;
         }

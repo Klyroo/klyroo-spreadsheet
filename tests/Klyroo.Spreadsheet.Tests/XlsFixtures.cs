@@ -196,6 +196,8 @@ internal sealed class XlsBook
         return Biff.Cat(head, Biff.Cat([.. boundSheets]), tail, Biff.Cat([.. bodies]));
     }
 
+    public byte[] BuildBiffStream() => BuildBiff();
+
     public byte[] BuildFile(int sectorSize = 512, string streamName = "Workbook") =>
         Cfb.Build([("\u0005SummaryInformation", new byte[200]), (streamName, BuildBiff())], sectorSize);
 }
@@ -204,7 +206,8 @@ internal static class Cfb
 {
     private const uint EndOfChain = 0xFFFFFFFE, Free = 0xFFFFFFFF, FatSector = 0xFFFFFFFD, DifSector = 0xFFFFFFFC;
 
-    public static byte[] Build(IReadOnlyList<(string Name, byte[] Data)> streams, int sectorSize = 512)
+    // With firstIsStorage, the first entry is a storage (an embedded object) holding the second one; the others stay at the root.
+    public static byte[] Build(IReadOnlyList<(string Name, byte[] Data)> streams, int sectorSize = 512, bool firstIsStorage = false)
     {
         var perFat = sectorSize / 4;
         var mini = new List<byte>();
@@ -313,7 +316,10 @@ internal static class Cfb
         for (var i = 0; i < streams.Count; i++)
         {
             var start = miniStarts.TryGetValue(i, out var m) ? m : bigStarts.TryGetValue(i, out var b) ? (uint)b : EndOfChain;
-            Entry(i + 1, streams[i].Name, 2, Free, i + 1 < streams.Count ? (uint)(i + 2) : Free, Free, start, streams[i].Data.Length);
+            var right = i + 1 < streams.Count ? (uint)(i + 2) : Free;
+            if (firstIsStorage && i == 0) Entry(1, streams[0].Name, 1, Free, streams.Count > 2 ? 3u : Free, 2, 0, 0);
+            else if (firstIsStorage && i == 1) Entry(2, streams[1].Name, 2, Free, Free, Free, start, streams[1].Data.Length);
+            else Entry(i + 1, streams[i].Name, 2, Free, right, Free, start, streams[i].Data.Length);
         }
         for (var i = streams.Count + 1; i < directorySectors * sectorSize / 128; i++)
         {
