@@ -47,7 +47,7 @@ var schema = SpreadsheetSchema.For<PriceRow>(s =>
 });
 ```
 
-The row class needs a public parameterless constructor and public setters; for a type without one, pass a factory: `SpreadsheetSchema.For(() => new PriceRow(...), s => ...)`. A property that cannot hold an empty cell (`decimal`, `bool`, an enum) makes its column required, so `Price` and `Currency` above are required without saying so; use `decimal?` for an optional price. An enum column offers one option per member without `Options`; `Options` replaces them to add labels and aliases such as the `€` symbol.
+The row class needs a public parameterless constructor and public setters; for a type without one, pass a factory: `SpreadsheetSchema.For(() => new PriceRow(...), s => ...)`. A property that cannot hold an empty cell (`decimal`, `bool`, an enum) makes its column required, so `Price` and `Currency` above are required without saying so; use `decimal?` for an optional price. An enum column offers one option per distinct value without `Options` (a member that repeats another's value, such as `Medium = Normal`, is accepted as an alias of the first declared one); `Options` replaces them to add labels and aliases such as the `€` symbol.
 
 A column without a `Label` gets one from its key (`UnitPrice` becomes `Unit price`). File headers are matched against the key, the label and the optional `Headers` aliases.
 

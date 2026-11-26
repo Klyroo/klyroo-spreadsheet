@@ -394,14 +394,27 @@ public sealed class SpreadsheetSchemaBuilder<[DynamicallyAccessedMembers(Dynamic
         },
         [.. _columns]);
 
-    // One option per member of an enum column that has no options of its own: the member name is the value, its name in words the label.
+    // One option per distinct value of an enum column that has no options of its own: the first declared name of the value is its text and, in words, its label.
+    // The other names of the same value (an alias such as Medium = Normal) stay accepted as aliases of that option, so a file that uses them still matches.
     private static IReadOnlyList<SpreadsheetOption<TItem?>> EnumOptions<TItem>(Type enumType)
     {
         var names = Enum.GetNames(enumType);
         var options = new List<SpreadsheetOption<TItem?>>(names.Length);
+        var seen = new List<object>(names.Length);
         foreach (var name in names)
         {
-            options.Add(new SpreadsheetOption<TItem?>((TItem)Enum.Parse(enumType, name), SpreadsheetImporter.HumanizeKey(name)));
+            var value = Enum.Parse(enumType, name);
+            var index = seen.FindIndex(v => v.Equals(value));
+            if (index < 0)
+            {
+                seen.Add(value);
+                options.Add(new SpreadsheetOption<TItem?>((TItem)value, SpreadsheetImporter.HumanizeKey(name)));
+            }
+            else
+            {
+                var option = options[index];
+                options[index] = option with { Aliases = [.. option.Aliases ?? [], name, SpreadsheetImporter.HumanizeKey(name)] };
+            }
         }
         return options;
     }

@@ -309,7 +309,7 @@ public abstract partial class SpreadsheetImporter
                 if (col.HasDefault)
                 {
                     parsedVal = col.DefaultBoxed;
-                    displayText = col.DefaultBoxed?.ToString() ?? "";
+                    displayText = SpreadsheetValueConverter.DisplayText(col, col.DefaultBoxed);
                     defaulted = true;
                 }
                 else if (col.Required)

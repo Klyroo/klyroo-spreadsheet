@@ -1343,7 +1343,7 @@ public abstract partial class SpreadsheetImporter
                 displayText = null;
                 return false;
             }
-            displayText = typed?.ToString();
+            displayText = SpreadsheetValueConverter.DisplayText(col, typed);
             return true;
         }
         if (!TryParseScalar(col, text, invariantNumbers, out var engine, out error))

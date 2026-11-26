@@ -36,14 +36,51 @@ internal static class SpreadsheetValueConverter
     internal static bool SupportsText(Type underlying) =>
         underlying == typeof(string) || underlying.IsEnum || IsNumber(underlying) || underlying == typeof(Guid) || underlying == typeof(bool);
 
-    /// <summary>The text of a value as an option value: names for enums, invariant text for numbers.</summary>
+    /// <summary>The text of a value as an option value: the first declared name for enums, invariant text for numbers.</summary>
     internal static string Format(object? value) => value switch
     {
         null => "",
         string s => s,
+        Enum e => EnumName(e),
         IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
         _ => value.ToString() ?? "",
     };
+
+    // The first declared name of an enum value. Enum.ToString picks any of the names of a value that has several.
+    private static string EnumName(Enum value)
+    {
+        var type = value.GetType();
+        foreach (var name in Enum.GetNames(type))
+        {
+            if (Enum.Parse(type, name).Equals(value)) return name;
+        }
+        return value.ToString();
+    }
+
+    /// <summary>
+    /// The text the review table shows for a typed value of a column, the same for a cell that was read, a typed default and a value from the column's own parser: invariant,
+    /// whatever the culture of the server. A number is its invariant text, a date is <c>yyyy-MM-dd</c> or with the time (and the offset when it is not zero), a select value is the
+    /// label of its option, and a flag is <c>True</c> or <c>False</c>.
+    /// </summary>
+    internal static string DisplayText(SpreadsheetColumnSchema column, object? value)
+    {
+        if (value is null) return "";
+        if (column.Kind == SpreadsheetColumnKind.Select)
+        {
+            var text = Format(value);
+            return column.Options?.FirstOrDefault(o => o.Value == text)?.Label ?? text;
+        }
+        return value switch
+        {
+            DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateTime dt => IsoDateTime(dt),
+            DateTimeOffset o => o.Offset == TimeSpan.Zero
+                ? IsoDateTime(o.DateTime)
+                : IsoDateTime(o.DateTime, withTime: true) + o.ToString("zzz", CultureInfo.InvariantCulture),
+            bool b => b ? "True" : "False",
+            _ => Format(value),
+        };
+    }
 
     /// <summary>
     /// The text of a row key: the one <c>ExistingRecords</c> is looked up with and <c>LookupExistingRecordsAsync</c> receives. It never depends on the culture.
