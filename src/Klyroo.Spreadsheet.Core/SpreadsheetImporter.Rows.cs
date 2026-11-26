@@ -428,13 +428,10 @@ public abstract partial class SpreadsheetImporter
             cellViews[col.Key] = new SpreadsheetCellView(cellText, originalText, displayText, hasEdit, defaulted, created, fieldIssue);
         }
 
-        if (Schema.HasValidateRow)
+        var extraIssues = Schema.CheckRow(rowData);
+        if (extraIssues is { Count: > 0 })
         {
-            var extraIssues = Schema.RunValidateRow(rowData);
-            if (extraIssues is { Count: > 0 })
-            {
-                rowIssues.AddRange(extraIssues);
-            }
+            rowIssues.AddRange(extraIssues);
         }
 
         string? duplicateKey = null;

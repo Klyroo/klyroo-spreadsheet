@@ -72,8 +72,7 @@ public abstract class SpreadsheetSchema
     /// <summary>The number of keys passed to the existing-record lookup per call. Zero or less sends all keys in one call.</summary>
     public int LookupBatchSize { get; }
 
-    internal abstract bool HasValidateRow { get; }
-    internal abstract IReadOnlyList<SpreadsheetRowIssue>? RunValidateRow(IReadOnlyDictionary<string, object?> data);
+    internal abstract IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data);
     internal abstract bool HasSubmit { get; }
     internal abstract Task<IReadOnlyList<SpreadsheetRejectedRow>?> SubmitBatchAsync(IReadOnlyList<SpreadsheetRow> batch, CancellationToken cancellationToken);
     internal abstract bool HasValidateRowsAsync { get; }
@@ -158,7 +157,19 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
         return row;
     }
 
-    internal SpreadsheetRow<TRow> ToTyped(SpreadsheetRow row) => row as SpreadsheetRow<TRow> ?? new SpreadsheetRow<TRow>(row, CreateValue(row.Data));
+    // A row the host's setters or factory refuse already carries a row.failed issue and is not importable; asking for its typed value fails with the cause.
+    internal SpreadsheetRow<TRow> ToTyped(SpreadsheetRow row)
+    {
+        if (row is SpreadsheetRow<TRow> typed) return typed;
+        try
+        {
+            return new SpreadsheetRow<TRow>(row, CreateValue(row.Data));
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"The typed value of row {row.RowNumber} cannot be built: {ex.Message}", ex);
+        }
+    }
 
     private IReadOnlyList<SpreadsheetRow<TRow>> ToTyped(IReadOnlyList<SpreadsheetRow> rows)
     {
@@ -167,10 +178,20 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
         return typed;
     }
 
-    internal override bool HasValidateRow => ValidateRow is not null;
-
-    internal override IReadOnlyList<SpreadsheetRowIssue>? RunValidateRow(IReadOnlyDictionary<string, object?> data) =>
-        ValidateRow is { } validate ? validate(CreateValue(data)) : null;
+    // Builds the row the host will receive, so a factory or a setter that throws is found while the file is read, then runs ValidateRow. An exception
+    // of the host becomes an error issue on the row (code row.failed) instead of failing the load.
+    internal override IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data)
+    {
+        try
+        {
+            var value = CreateValue(data);
+            return ValidateRow is { } validate ? validate(value) : null;
+        }
+        catch (Exception ex)
+        {
+            return [new SpreadsheetRowIssue(null, "row.failed", SpreadsheetIssueLevel.Error, ex.Message)];
+        }
+    }
 
     internal override bool HasSubmit => OnSubmitAsync is not null || OnSubmit is not null;
 

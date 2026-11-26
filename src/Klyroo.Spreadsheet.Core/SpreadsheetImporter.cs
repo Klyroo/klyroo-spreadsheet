@@ -25,12 +25,13 @@ public sealed class SpreadsheetImporter<[DynamicallyAccessedMembers(DynamicallyA
     /// <param name="row">A row of <see cref="SpreadsheetImporter.AllRows"/>, <see cref="SpreadsheetImporter.ImportableRows"/> or one of the other row lists.</param>
     /// <returns>The typed row. Each call builds a new <typeparamref name="TRow"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="row"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The factory or a property setter of the row class threw for this row. The importer already reports that as an error issue with the code <c>row.failed</c> when it reads the file, so the row is not importable; the message names the row and the inner exception is the cause.</exception>
     public SpreadsheetRow<TRow> ToTyped(SpreadsheetRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
         return Schema.ToTyped(row);
     }
 
-    /// <summary>The rows that would be sent on submit, typed. It builds one <typeparamref name="TRow"/> per row on each call.</summary>
+    /// <summary>The rows that would be sent on submit, typed. It builds one <typeparamref name="TRow"/> per row on each call. It never throws for a row the host refused: such a row is not importable.</summary>
     public IReadOnlyList<SpreadsheetRow<TRow>> ImportableTypedRows => ImportableRows.Select(Schema.ToTyped).ToList();
 }
