@@ -275,8 +275,12 @@ internal sealed class BiffWorkbookReader(byte[] data)
         if (!double.IsFinite(value)) return "#NUM!";
         if (xf < _dateXf.Length && _dateXf[xf] && SpreadsheetDateFormats.FormatSerial(value, _date1904) is { } date) return date;
         if (value == 0) return "0";
-        // Whole numbers print in full (an identifier of 16 digits must not become 1.234E+15).
-        if (value == Math.Floor(value) && Math.Abs(value) < 9e18) return ((long)value).ToString(CultureInfo.InvariantCulture);
+        // Whole numbers print in full (an identifier of 16 digits must not become 1.234E+15), up to the range of a long or an unsigned long.
+        if (value == Math.Floor(value))
+        {
+            if (value is >= -9.2233720368547758E18 and < 9.2233720368547758E18) return ((long)value).ToString(CultureInfo.InvariantCulture);
+            if (value is > 0 and < 1.8446744073709552E19) return ((ulong)value).ToString(CultureInfo.InvariantCulture);
+        }
         return value.ToString("R", CultureInfo.InvariantCulture);
     }
 

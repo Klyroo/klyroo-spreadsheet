@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace Klyroo.Spreadsheet;
 
-// Maps the value types a column can be declared with to the value the parsing engine reads (a double, a bool, an ISO 8601 text or
+// Maps the value types a column can be declared with to the value the parsing engine reads (the invariant text of a number, a bool, an ISO 8601 text or
 // the text of a select option) and back. Everything here works on runtime Type values with explicit type tests and never builds a
 // generic instantiation at runtime, so it stays NativeAOT friendly.
 internal static class SpreadsheetValueConverter
@@ -53,8 +53,8 @@ internal static class SpreadsheetValueConverter
         if (engine is null) return true;
         switch (kind)
         {
-            case SpreadsheetColumnKind.Number when engine is double d:
-                return TryNumber(underlying, d, cellText, out typed, out error);
+            case SpreadsheetColumnKind.Number when engine is string number:
+                return TryNumber(underlying, number, cellText, out typed, out error);
             case SpreadsheetColumnKind.Date when engine is string iso:
                 return TryDate(underlying, iso, cellText, out typed, out error);
             case SpreadsheetColumnKind.Select when engine is string text:
@@ -99,25 +99,35 @@ internal static class SpreadsheetValueConverter
         }
         if (IsNumber(underlying))
         {
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) return false;
-            return TryNumber(underlying, d, text, out value, out _);
+            return TryNumber(underlying, text, text, out value, out _);
         }
         return false;
     }
 
-    private static bool TryNumber(Type t, double d, string cellText, out object? value, out string? error)
+    // The text of a number as the engine reads it: an optional sign, digits with at most one '.', and an optional exponent, always with
+    // '.' as the decimal mark. The value is read from this text into the property type, so no digit goes through a double on the way.
+    private static bool TryNumber(Type t, string text, string cellText, out object? value, out string? error)
     {
         value = null;
         error = null;
+        if (!Decompose(text, out var negative, out var digits, out var exp))
+        {
+            error = $"\"{cellText}\" is not a number";
+            return false;
+        }
+        var zero = digits.Length == 0;
+        if (zero) text = "0";
         if (t == typeof(double))
         {
-            value = d;
-            return true;
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) && double.IsFinite(d) && (d != 0 || zero))
+            {
+                value = d;
+                return true;
+            }
         }
-        if (t == typeof(float))
+        else if (t == typeof(float))
         {
-            var f = (float)d;
-            if (!float.IsInfinity(f))
+            if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var f) && float.IsFinite(f) && (f != 0 || zero))
             {
                 value = f;
                 return true;
@@ -125,37 +135,117 @@ internal static class SpreadsheetValueConverter
         }
         else if (t == typeof(decimal))
         {
-            if (Math.Abs(d) <= 7.9228162514264337593543950335E28)
+            // 29 digits is the most a decimal holds. A value past them is out of range, and one with more decimals than it keeps is refused instead of rounded.
+            if (digits.Length + exp > 29)
             {
-                value = (decimal)d;
+                error = $"\"{cellText}\" is out of range";
+                return false;
+            }
+            if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var m)
+                && Decompose(m.ToString(CultureInfo.InvariantCulture), out var mNegative, out var mDigits, out var mExp)
+                && mDigits == digits && mExp == exp && (mNegative == negative || zero))
+            {
+                value = m;
                 return true;
             }
+            error = digits.Length + exp >= 29 ? $"\"{cellText}\" is out of range" : $"\"{cellText}\" has more decimals than this column can hold";
+            return false;
         }
         else if (IsIntegral(t))
         {
-            if (d != Math.Truncate(d))
+            if (exp < 0)
             {
                 error = $"\"{cellText}\" is not a whole number";
                 return false;
             }
-            if (TryInteger(t, d, out value)) return true;
+            // 20 digits is the most any of the integral types holds (ulong).
+            if (digits.Length + exp <= 20)
+            {
+                var whole = zero ? "0" : (negative ? "-" : "") + digits + new string('0', (int)exp);
+                if (TryInteger(t, whole, out value)) return true;
+            }
         }
         error = $"\"{cellText}\" is out of range";
         return false;
     }
 
-    private static bool TryInteger(Type t, double d, out object? value)
+    private static bool TryInteger(Type t, string text, out object? value)
     {
         value = null;
-        if (t == typeof(int)) { if (d is >= int.MinValue and <= int.MaxValue) { value = (int)d; return true; } }
-        else if (t == typeof(long)) { if (d is >= -9.2233720368547758E18 and < 9.2233720368547758E18) { value = (long)d; return true; } }
-        else if (t == typeof(short)) { if (d is >= short.MinValue and <= short.MaxValue) { value = (short)d; return true; } }
-        else if (t == typeof(byte)) { if (d is >= byte.MinValue and <= byte.MaxValue) { value = (byte)d; return true; } }
-        else if (t == typeof(sbyte)) { if (d is >= sbyte.MinValue and <= sbyte.MaxValue) { value = (sbyte)d; return true; } }
-        else if (t == typeof(uint)) { if (d is >= uint.MinValue and <= uint.MaxValue) { value = (uint)d; return true; } }
-        else if (t == typeof(ulong)) { if (d is >= 0 and < 1.8446744073709552E19) { value = (ulong)d; return true; } }
-        else if (t == typeof(ushort)) { if (d is >= ushort.MinValue and <= ushort.MaxValue) { value = (ushort)d; return true; } }
+        const NumberStyles style = NumberStyles.AllowLeadingSign;
+        var culture = CultureInfo.InvariantCulture;
+        if (t == typeof(int)) { if (int.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(long)) { if (long.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(short)) { if (short.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(byte)) { if (byte.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(sbyte)) { if (sbyte.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(uint)) { if (uint.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(ulong)) { if (ulong.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        else if (t == typeof(ushort)) { if (ushort.TryParse(text, style, culture, out var v)) { value = v; return true; } }
         return false;
+    }
+
+    /// <summary>Whether the text is a plain number as the engine writes it (sign, digits, one '.', exponent).</summary>
+    internal static bool IsNumberText(string text) => Decompose(text, out _, out _, out _);
+
+    // Splits a number text into its sign, its significant digits (no leading or trailing zeros) and the power of ten that scales them:
+    // 12.50 is digits "125" with exponent -1, and 1.2e3 is "12" with exponent 2. The exponent is capped so a hostile "1e999999999999999" cannot overflow.
+    // False when the text is not a plain decimal number. A zero has no digits.
+    private static bool Decompose(string text, out bool negative, out string digits, out long exp)
+    {
+        negative = false;
+        digits = "";
+        exp = 0;
+        var s = text.AsSpan().Trim();
+        var i = 0;
+        if (i < s.Length && s[i] is '+' or '-')
+        {
+            negative = s[i] == '-';
+            i++;
+        }
+        var start = i;
+        var dot = -1;
+        for (; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (c is >= '0' and <= '9') continue;
+            if (c == '.' && dot < 0)
+            {
+                dot = i;
+                continue;
+            }
+            break;
+        }
+        var end = i;
+        var mantissaLength = end - start - (dot >= 0 ? 1 : 0);
+        if (mantissaLength == 0) return false;
+        long e = 0;
+        if (i < s.Length)
+        {
+            if (s[i] is not ('e' or 'E')) return false;
+            i++;
+            var exponentNegative = false;
+            if (i < s.Length && s[i] is '+' or '-')
+            {
+                exponentNegative = s[i] == '-';
+                i++;
+            }
+            if (i >= s.Length) return false;
+            for (; i < s.Length; i++)
+            {
+                if (s[i] is < '0' or > '9') return false;
+                e = Math.Min(e * 10 + (s[i] - '0'), 1_000_000_000_000L);
+            }
+            if (exponentNegative) e = -e;
+        }
+        var scale = dot < 0 ? 0 : end - dot - 1;
+        var mantissa = dot < 0 ? s[start..end].ToString() : string.Concat(s[start..dot], s[(dot + 1)..end]);
+        var significant = mantissa.TrimStart('0');
+        var trimmed = significant.TrimEnd('0');
+        if (trimmed.Length == 0) return true;
+        digits = trimmed;
+        exp = e - scale + (significant.Length - trimmed.Length);
+        return true;
     }
 
     private static bool TryDate(Type t, string iso, string cellText, out object? value, out string? error)

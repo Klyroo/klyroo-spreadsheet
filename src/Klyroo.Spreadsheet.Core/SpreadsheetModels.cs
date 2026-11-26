@@ -1354,7 +1354,10 @@ public abstract partial class SpreadsheetImporter
             return false;
         }
         displayText = engine?.ToString();
-        return col.TryConvert(engine, text, out typed, out error);
+        if (!col.TryConvert(engine, text, out typed, out error)) return false;
+        // A number is shown as the value the host receives, in invariant form, whatever the culture of the server.
+        if (col.Kind == SpreadsheetColumnKind.Number && typed is not null) displayText = SpreadsheetValueConverter.Format(typed);
+        return true;
     }
 
     private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)
@@ -1367,10 +1370,9 @@ public abstract partial class SpreadsheetImporter
                     .Replace("'", "", StringComparison.Ordinal);
                 // A thousands separator is accepted only between groups of three digits, so "12,50" with a
                 // '.' decimal mark is rejected instead of being read as 1250.
-                if (invariantNumbers && InvariantNumber.IsMatch(cleaned)
-                    && double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariantValue))
+                if (invariantNumbers && InvariantNumber.IsMatch(cleaned))
                 {
-                    value = invariantValue;
+                    value = cleaned;
                     error = null;
                     return true;
                 }
@@ -1379,9 +1381,9 @@ public abstract partial class SpreadsheetImporter
                 cleaned = commaDecimal
                     ? cleaned.Replace(".", "", StringComparison.Ordinal).Replace(',', '.')
                     : cleaned.Replace(",", "", StringComparison.Ordinal);
-                if (wellFormed && double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                if (wellFormed && SpreadsheetValueConverter.IsNumberText(cleaned))
                 {
-                    value = d;
+                    value = cleaned;
                     error = null;
                     return true;
                 }
