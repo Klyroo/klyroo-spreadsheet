@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Klyroo.Spreadsheet</RootNamespace>
     <PackageId>Klyroo.Spreadsheet.Core</PackageId>
+    <PackageTags>klyroo;csv;xlsx;xls;excel;import;headless;nativeaot</PackageTags>
     <Description>Klyroo Spreadsheet Core: Headless spreadsheet import engine with layout detection, 80%-pass column suggestions, unknown value resolution, row validation and batched submit. Zero UI dependency, NativeAOT compatible.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsTrimmable>true</IsTrimmable>

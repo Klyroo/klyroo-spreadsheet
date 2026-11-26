@@ -4,7 +4,7 @@ A .NET library that imports CSV, TSV and pasted spreadsheet data into your appli
 
 [![CI](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/vpre/Klyroo.Spreadsheet.svg)](https://www.nuget.org/packages/Klyroo.Spreadsheet)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/klyroo/klyroo-spreadsheet/blob/main/LICENSE)
 
 User files rarely match your model: the header is on row 3, a column is named differently, a status says "Gold" where you expect "pro". Klyroo.Spreadsheet puts the engine that deals with this in a headless package you can unit test, and adds a Blazor wizard on top of it. The engine runs anywhere .NET 10 runs, and the wizard runs in Blazor Web Apps and .NET MAUI Blazor Hybrid.
 
@@ -37,7 +37,7 @@ To use the library in an app:
 - **A browser with the native popover API**, which Klyroo.UI uses: Chrome and Edge 114, Safari 17 or Firefox 125, or later. In a .NET MAUI app, that means iOS or Mac Catalyst 17, or an Android System WebView 114 or later.
 - **Network access on the first build** only if your app self-hosts web fonts (`KlyrooFont`), uses icons outside the built-in set, or compiles Tailwind (`KlyrooTailwind`): the build downloads them once and caches them under `obj/klyroo`. Node.js is not needed.
 
-To build this repository you need the .NET 10 SDK (a newer SDK works too, see `global.json`) and a clone of `klyroo-ui` in the same parent folder: some projects reference it by relative path (`../klyroo-ui/...`). See [Contributing](CONTRIBUTING.md).
+To build this repository you need the .NET 10 SDK (a newer SDK works too, see `global.json`) and a clone of `klyroo-ui` in the same parent folder: some projects reference it by relative path (`../klyroo-ui/...`). See [Contributing](https://github.com/klyroo/klyroo-spreadsheet/blob/main/CONTRIBUTING.md).
 
 ## Installation
 
@@ -148,12 +148,12 @@ In Blazor, give the same importer to `KlySpreadsheetImport`. Users choose or dro
 
 | | |
 | :--- | :--- |
-| [Getting started](docs/getting-started.md) | Step-by-step first integration |
-| [Guides](docs/guides.md) | Task-oriented recipes |
-| [Concepts](docs/concepts.md) | How the library works |
-| [Platforms](docs/platforms.md) | Render modes, .NET MAUI, NativeAOT |
-| [API reference](docs/api-reference.md) | Every public type and member |
-| [FAQ](docs/faq.md) | Troubleshooting and limitations |
+| [Getting started](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/getting-started.md) | Step-by-step first integration |
+| [Guides](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/guides.md) | Task-oriented recipes |
+| [Concepts](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/concepts.md) | How the library works |
+| [Platforms](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/platforms.md) | Render modes, .NET MAUI, NativeAOT |
+| [API reference](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/api-reference.md) | Every public type and member |
+| [FAQ](https://github.com/klyroo/klyroo-spreadsheet/blob/main/docs/faq.md) | Troubleshooting and limitations |
 
 ## Compatibility
 
@@ -181,9 +181,9 @@ Klyroo is a family of independent .NET libraries that compose. Each one has its 
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and follow the
-[code of conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Contributions are welcome. Read [CONTRIBUTING.md](https://github.com/klyroo/klyroo-spreadsheet/blob/main/CONTRIBUTING.md) before opening a pull request, and follow the
+[code of conduct](https://github.com/klyroo/klyroo-spreadsheet/blob/main/CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](https://github.com/klyroo/klyroo-spreadsheet/blob/main/SECURITY.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/klyroo/klyroo-spreadsheet/blob/main/LICENSE)
