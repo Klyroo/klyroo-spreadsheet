@@ -391,13 +391,20 @@ internal static class SpreadsheetValueConverter
 }
 
 /// <summary>A number text split by <see cref="SpreadsheetValueConverter.Decompose"/>: the digits stay in the text, the struct holds where they are.</summary>
-/// <param name="Negative">Whether the text starts with a minus sign.</param>
-/// <param name="DigitCount">The number of significant digits: no leading or trailing zeros. Zero for the number zero.</param>
-/// <param name="Exp">The power of ten that scales the significant digits taken as a whole number.</param>
-/// <param name="FirstSignificant">The index of the first significant digit in the trimmed text.</param>
-/// <param name="LastSignificant">The index of the last significant digit in the trimmed text.</param>
-/// <param name="Dot">The index of the decimal mark in the trimmed text, or -1 when there is none.</param>
-internal readonly record struct NumberParts(bool Negative, int DigitCount, long Exp, int FirstSignificant, int LastSignificant, int Dot)
+/// <remarks>A plain struct: nothing compares, prints or deconstructs it, and a record struct would add ten members to the assembly.</remarks>
+internal readonly struct NumberParts(bool negative, int digitCount, long exp, int firstSignificant, int lastSignificant, int dot)
 {
+    /// <summary>Whether the text starts with a minus sign.</summary>
+    public bool Negative { get; } = negative;
+    /// <summary>The number of significant digits: no leading or trailing zeros. Zero for the number zero.</summary>
+    public int DigitCount { get; } = digitCount;
+    /// <summary>The power of ten that scales the significant digits taken as a whole number.</summary>
+    public long Exp { get; } = exp;
+    /// <summary>The index of the first significant digit in the trimmed text.</summary>
+    public int FirstSignificant { get; } = firstSignificant;
+    /// <summary>The index of the last significant digit in the trimmed text.</summary>
+    public int LastSignificant { get; } = lastSignificant;
+    /// <summary>The index of the decimal mark in the trimmed text, or -1 when there is none.</summary>
+    public int Dot { get; } = dot;
     public bool IsZero => DigitCount == 0;
 }

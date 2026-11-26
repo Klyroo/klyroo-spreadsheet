@@ -248,4 +248,14 @@ internal sealed class CompoundFile
 
 /// <summary>A directory entry of a compound file: 1 storage, 2 stream, 5 root.</summary>
 // Left, Right and Child are directory indexes: the siblings of an entry form a red-black tree under their storage's Child.
-internal sealed record CompoundEntry(string Name, byte Type, uint Start, long Size, uint Left, uint Right, uint Child);
+// A plain class, not a record: nothing compares, prints or deconstructs the entries of a directory.
+internal sealed class CompoundEntry(string name, byte type, uint start, long size, uint left, uint right, uint child)
+{
+    public string Name { get; } = name;
+    public byte Type { get; } = type;
+    public uint Start { get; } = start;
+    public long Size { get; } = size;
+    public uint Left { get; } = left;
+    public uint Right { get; } = right;
+    public uint Child { get; } = child;
+}

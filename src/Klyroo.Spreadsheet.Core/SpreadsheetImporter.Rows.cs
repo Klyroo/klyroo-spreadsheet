@@ -22,7 +22,14 @@ public abstract partial class SpreadsheetImporter
         public required string? DuplicateKey { get; init; }
     }
 
-    private readonly record struct UnknownEntry(string Id, SpreadsheetColumnSchema Column, string Raw, string Normalized);
+    // A plain struct, not a record struct: nothing compares, prints or deconstructs these, and a record would add ten members to the assembly for each.
+    private readonly struct UnknownEntry(string id, SpreadsheetColumnSchema column, string raw, string normalized)
+    {
+        public string Id { get; } = id;
+        public SpreadsheetColumnSchema Column { get; } = column;
+        public string Raw { get; } = raw;
+        public string Normalized { get; } = normalized;
+    }
 
     private static readonly UnknownEntry[] NoUnknown = [];
 
