@@ -15,6 +15,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- `SpreadsheetRule.Pattern` builds its regular expression with a match timeout (`matchTimeout`, 100 ms by default, `SpreadsheetRule.DefaultPatternTimeout`). A cell that makes a match time out, or a custom rule that throws `RegexMatchTimeoutException`, gets a `pattern` issue instead of hanging or aborting the import.
+
 - `ImportedCount` is a running total: a retry adds the rows it got accepted instead of replacing the count.
 - `SubmitAsync` does nothing unless `CanSubmit`, instead of completing as `Done` with zero rows.
 - The option returned by `OnCreateOption` is used: rows carry its value and label, and a retry does not create it again.

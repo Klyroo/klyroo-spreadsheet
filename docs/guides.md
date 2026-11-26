@@ -60,6 +60,8 @@ What happens for each row of that file:
 - Row 3 is blocked by the `not-reserved` rule. Its empty `Available` cell takes the default, and its weight raises a warning (code `max`) that does not block the row.
 - Row 4 is blocked twice: `ab-12` fails the pattern, and `2026-03-20` is not in the only format this column accepts, so you get a `date` error.
 
+`Pattern` matches with a timeout (100 ms by default, the `matchTimeout` argument changes it), so a pasted value built to trigger catastrophic backtracking cannot freeze the import: that cell gets a `pattern` issue saying the format could not be checked in time.
+
 Three details are easy to miss. A rule only runs on a non-empty value that parsed. The `Min`, `Max` and `Between` rules only accept a `double`, so use them on `Number` columns. And `DefaultValue` is applied only when `HasDefault` is `true`, which lets a default be `null` on purpose.
 
 The built-in boolean values are `yes`, `y`, `oui`, `o`, `true`, `vrai`, `x`, `1` and `no`, `n`, `non`, `false`, `faux`, `0`. For anything else, set `CustomParse` on the column: it receives the cell text, returns the value, and an exception becomes an error on the cell with the exception message.

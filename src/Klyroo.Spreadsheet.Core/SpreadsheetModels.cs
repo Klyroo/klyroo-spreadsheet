@@ -199,15 +199,20 @@ public sealed record SpreadsheetRule(
     public static SpreadsheetRule Email(string message = "Not an email address", SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error) =>
         new("email", message, v => v is string s && EmailRegex.IsMatch(s), level);
 
-    /// <summary>Creates a rule that accepts text matching a regular expression.</summary>
+    /// <summary>The match timeout <see cref="Pattern"/> uses when you pass none: 100 milliseconds per cell.</summary>
+    public static readonly TimeSpan DefaultPatternTimeout = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>Creates a rule that accepts text matching a regular expression. A cell that makes the match run past the timeout (catastrophic backtracking on a hostile value) does not hang the import: it gets a <c>pattern</c> issue saying the format could not be checked in time.</summary>
     /// <param name="pattern">The regular expression. It is not anchored unless you add <c>^</c> and <c>$</c>.</param>
     /// <param name="message">The issue text.</param>
-    /// <param name="level">The issue severity.</param>
+    /// <param name="level">The issue severity. A timed-out check gets the same severity.</param>
+    /// <param name="matchTimeout">The longest one match may take. Defaults to <see cref="DefaultPatternTimeout"/>. Use <see cref="Regex.InfiniteMatchTimeout"/> to remove the limit.</param>
     /// <returns>A rule with code <c>pattern</c>. It fails for any value that is not a string.</returns>
     /// <exception cref="ArgumentException"><paramref name="pattern"/> is not a valid regular expression.</exception>
-    public static SpreadsheetRule Pattern(string pattern, string message = "Unexpected format", SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="matchTimeout"/> is zero, negative or too large for <see cref="Regex"/>.</exception>
+    public static SpreadsheetRule Pattern(string pattern, string message = "Unexpected format", SpreadsheetIssueLevel level = SpreadsheetIssueLevel.Error, TimeSpan? matchTimeout = null)
     {
-        var rx = new Regex(pattern, RegexOptions.Compiled);
+        var rx = new Regex(pattern, RegexOptions.Compiled, matchTimeout ?? DefaultPatternTimeout);
         return new("pattern", message, v => v is string s && rx.IsMatch(s), level);
     }
 
@@ -1617,9 +1622,12 @@ public sealed class SpreadsheetImporter
                 {
                     foreach (var rule in col.Rules)
                     {
-                        if (!rule.Validate(parsedVal))
+                        var passed = RunRule(rule, parsedVal, out var timedOut);
+                        if (!passed)
                         {
-                            var ruleIssue = new SpreadsheetRowIssue(col.Key, rule.Code, rule.Level, rule.Message);
+                            var ruleIssue = timedOut
+                                ? new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time")
+                                : new SpreadsheetRowIssue(col.Key, rule.Code, rule.Level, rule.Message);
                             rowIssues.Add(ruleIssue);
                             fieldIssue ??= ruleIssue;
                         }
@@ -1770,6 +1778,21 @@ public sealed class SpreadsheetImporter
         _ => null,
     };
 
+    // A rule that makes a regular expression time out (RegexMatchTimeoutException) fails instead of aborting the import.
+    private static bool RunRule(SpreadsheetRule rule, object? value, out bool timedOut)
+    {
+        try
+        {
+            timedOut = false;
+            return rule.Validate(value);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            timedOut = true;
+            return false;
+        }
+    }
+
     private static bool CanSuggestColumn(SpreadsheetColumnSchema col) =>
         col.Kind != SpreadsheetColumnKind.Text || col.CustomParse is not null || col.Rules is { Count: > 0 };
 
@@ -1782,7 +1805,7 @@ public sealed class SpreadsheetImporter
         if (!TryParseScalar(col, sample, invariantNumbers, out var val, out _)) return false;
         if (col.Rules is { Count: > 0 })
         {
-            return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || r.Validate(val));
+            return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _));
         }
         return true;
     }
