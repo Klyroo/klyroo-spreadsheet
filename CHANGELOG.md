@@ -8,10 +8,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Added
 
+- Scale: the importer updates only the rows a change concerns (`EditCell`, `RevertCell`, `AnswerValue`, `ClearAnswer`, `DiscardRows`, `RestoreRows`) instead of reading the whole file again, keeps an index of duplicate keys to re-check only the rows of the keys involved, and caches `ImportableRows`, `InvalidRows`, `DiscardedRows` and `VisibleReviewRows` until a row or a filter changes. Editing a cell of a 50,000-row file now takes milliseconds instead of about 400.
+- Paged review: `ReviewPageRows`, `ReviewPage`, `ReviewPageCount`, `ReviewPageSize`, `SetReviewPage`, `SetReviewPageSize` and `SpreadsheetImporter.DefaultReviewPageSize`. `KlySpreadsheetImport` renders one page of the review table (`PageSize`, 50 by default) with a pager made of buttons (first, previous, next, last, rows per page).
+- Row limit for the wizard: `KlySpreadsheetImport.MaxRows` (10,000 by default, `null` for no limit) applies when the schema has no `MaxRows`, and the component says how many rows were left out. Headless: `SpreadsheetImporter.DefaultMaxRows`, `EffectiveMaxRows` and `LimitedRowCount`.
 - `SpreadsheetXlsxReader` and `SpreadsheetImporter.LoadFileAsync`: `.xlsx` workbooks are read with the base class library only (shared and inline strings, numbers, booleans, dates, every worksheet), and text files are decoded as UTF-8 or Latin-1.
 - `KlySpreadsheetImport` reads files itself: users choose or drop a CSV, TSV, `.xlsx` or `.xls` file on the file step (`MaxFileSize`, 10 MB by default) or paste rows. It also offers a sheet and a header row selector, row selection with Leave out and Restore, severity and issue filters in the review, undo of edited cells in the row inspector, and shows column `Description` and `Group`.
 - `SpreadsheetXlsReader`: legacy `.xls` workbooks (BIFF8 in an OLE2 compound file, Excel 97 to 2003) are read with the base class library only, with the same values as `.xlsx` (shared and inline strings, numbers, booleans, error text, dates, every worksheet, cached formula results). `SpreadsheetImporter.LoadFileAsync` and `KlySpreadsheetImport` accept them, choosing the reader by content as well as by extension; a tab-separated or CSV export named `.xls` is read as delimited text, and an HTML or XML export named `.xls` is refused. Password-protected workbooks and the Excel 5.0/95 format (BIFF5) are refused with an `InvalidDataException`, and damaged or hostile files are refused without looping or large allocations.
 - `SpreadsheetWorkbook.InvariantNumbers`, so number cells of a typed workbook read whatever the column's decimal mark.
+
+### Changed
+
+- `ImportableRows`, `InvalidRows`, `DiscardedRows` and `AllRows` are cached lists (a list you took earlier does not change afterwards). `VisibleReviewRows` is cached too.
+- The select-all checkbox of the review table selects the rows of the current page instead of every visible row.
+- Matching a select cell to its option uses an index built once per column instead of normalizing every option for every cell.
 
 ### Fixed
 

@@ -503,7 +503,7 @@ public sealed record SpreadsheetStepStatus(
 /// An instance holds the state of one import session and is not thread-safe. Create one per user and per import.
 /// Every method that changes state raises <see cref="Changed"/> synchronously on the calling thread.
 /// </remarks>
-public sealed class SpreadsheetImporter
+public sealed partial class SpreadsheetImporter
 {
     private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
     private static readonly Regex InvariantNumber = new(@"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
@@ -544,7 +544,6 @@ public sealed class SpreadsheetImporter
     private int _headerRowIndex;
     private IReadOnlyList<SpreadsheetFieldState> _fields = [];
     private IReadOnlyList<SpreadsheetValueQuestion> _questions = [];
-    private IReadOnlyList<SpreadsheetRow> _rows = [];
 
     /// <summary>Creates an importer for a schema, with no file loaded.</summary>
     /// <param name="schema">The columns and policies of the import.</param>
@@ -587,27 +586,8 @@ public sealed class SpreadsheetImporter
     public IReadOnlyList<string> UnusedHeaders { get; private set; } = [];
     /// <summary>The mapping state of every schema column, in schema order.</summary>
     public IReadOnlyList<SpreadsheetFieldState> Fields => _fields;
-    /// <summary>The fields with status <see cref="SpreadsheetColumnStatus.Missing"/>. Submission is blocked while this is not empty.</summary>
-    public IReadOnlyList<SpreadsheetFieldState> MissingFields =>
-        _fields.Where(f => f.Status == SpreadsheetColumnStatus.Missing).ToList();
-
     /// <summary>Every unknown select value found in the file, answered or not.</summary>
     public IReadOnlyList<SpreadsheetValueQuestion> Questions => _questions;
-    /// <summary>The questions with no answer yet. Submission is blocked while this is not empty.</summary>
-    public IReadOnlyList<SpreadsheetValueQuestion> OpenQuestions =>
-        _questions.Where(q => q.IsOpen).ToList();
-
-    /// <summary>Every data row after the header, discarded ones included.</summary>
-    public IReadOnlyList<SpreadsheetRow> AllRows => _rows;
-    /// <summary>The rows that would be sent on submit. Each access builds a new list.</summary>
-    public IReadOnlyList<SpreadsheetRow> ImportableRows => _rows.Where(r => r.Importable).ToList();
-    /// <summary>The rows with at least one error that are not discarded.</summary>
-    public IReadOnlyList<SpreadsheetRow> InvalidRows =>
-        _rows.Where(r => r.DiscardReason is null && r.Status == SpreadsheetRowStatus.Blocking).ToList();
-    /// <summary>The rows left out of the import for any reason.</summary>
-    public IReadOnlyList<SpreadsheetRow> DiscardedRows =>
-        _rows.Where(r => r.DiscardReason is not null).ToList();
-
     /// <summary><see langword="true"/> when a file is loaded, no field is missing, no question is open and at least one row is importable.</summary>
     public bool CanSubmit =>
         FileLoaded && MissingFields.Count == 0 && OpenQuestions.Count == 0 && ImportableRows.Count > 0;
@@ -628,7 +608,7 @@ public sealed class SpreadsheetImporter
 
     /// <summary>The row open in the inspector, or <see langword="null"/>.</summary>
     public SpreadsheetRow? InspectedRow =>
-        InspectedRowIndex is { } idx ? _rows.FirstOrDefault(r => r.Index == idx) : null;
+        InspectedRowIndex is { } idx && idx >= 0 && idx < _rowArr.Length ? _rowArr[idx] : null;
 
     private bool InvariantNumbers => _workbook?.InvariantNumbers == true;
 
@@ -768,10 +748,11 @@ public sealed class SpreadsheetImporter
         _valueAnswers.Clear();
         _edits.Clear();
         _manualDiscards.Clear();
-        _serverRejections.Clear();
         _selectedRows.Clear();
         InspectedRowIndex = null;
+        _serverRejections.Clear();
         SubmitStatus = SpreadsheetSubmitStatus.Idle;
+        ReviewPage = 0;
         DetectLayout();
         Recompute();
         Changed?.Invoke();
@@ -787,13 +768,14 @@ public sealed class SpreadsheetImporter
         _valueAnswers.Clear();
         _edits.Clear();
         _manualDiscards.Clear();
-        _serverRejections.Clear();
         _selectedRows.Clear();
         InspectedRowIndex = null;
         CurrentStepKey = "file";
         _visitedSteps.Clear();
         _visitedSteps.Add("file");
+        _serverRejections.Clear();
         SubmitStatus = SpreadsheetSubmitStatus.Idle;
+        ReviewPage = 0;
         Recompute();
         Changed?.Invoke();
     }
@@ -808,6 +790,7 @@ public sealed class SpreadsheetImporter
         _manualDiscards.Clear();
         _serverRejections.Clear();
         _headerRowIndex = BestHeaderRowForSheet(CurrentSheet!).RowIndex;
+        ReviewPage = 0;
         Recompute();
         Changed?.Invoke();
     }
@@ -821,6 +804,7 @@ public sealed class SpreadsheetImporter
         _manualColumns.Clear();
         _manualDiscards.Clear();
         _serverRejections.Clear();
+        ReviewPage = 0;
         Recompute();
         Changed?.Invoke();
     }
@@ -865,7 +849,7 @@ public sealed class SpreadsheetImporter
     {
         var key = $"{fieldKey}::{NormalizeText(rawValue)}";
         _valueAnswers[key] = answer;
-        Recompute();
+        ReparseAnswered(key);
         Changed?.Invoke();
     }
 
@@ -876,11 +860,11 @@ public sealed class SpreadsheetImporter
     {
         var key = $"{fieldKey}::{NormalizeText(rawValue)}";
         _valueAnswers.Remove(key);
-        Recompute();
+        ReparseAnswered(key);
         Changed?.Invoke();
     }
 
-    /// <summary>Replaces the text of one cell and revalidates. The edit applies in the importer only and never changes the source file. It also clears a server rejection of that row.</summary>
+    /// <summary>Replaces the text of one cell and revalidates that row (and, when the edit changes the row key, the other rows that share the old or the new key). The edit applies in the importer only and never changes the source file. It also clears a server rejection of that row.</summary>
     /// <param name="rowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>
     /// <param name="fieldKey">The key of the column.</param>
     /// <param name="text">The new cell text, trimmed before use.</param>
@@ -888,7 +872,7 @@ public sealed class SpreadsheetImporter
     {
         _edits[(rowIndex, fieldKey)] = text.Trim();
         _serverRejections.Remove(rowIndex);
-        Recompute();
+        ReparseRows([rowIndex], alwaysRebuildQuestions: false);
         Changed?.Invoke();
     }
 
@@ -898,7 +882,7 @@ public sealed class SpreadsheetImporter
     public void RevertCell(int rowIndex, string fieldKey)
     {
         _edits.Remove((rowIndex, fieldKey));
-        Recompute();
+        ReparseRows([rowIndex], alwaysRebuildQuestions: false);
         Changed?.Invoke();
     }
 
@@ -906,9 +890,10 @@ public sealed class SpreadsheetImporter
     /// <param name="rowIndexes">The <see cref="SpreadsheetRow.Index"/> values to discard.</param>
     public void DiscardRows(IEnumerable<int> rowIndexes)
     {
-        foreach (var idx in rowIndexes) _manualDiscards.Add(idx);
+        var changed = rowIndexes.ToList();
+        foreach (var idx in changed) _manualDiscards.Add(idx);
         _selectedRows.Clear();
-        Recompute();
+        RefinalizeRows(changed);
         Changed?.Invoke();
     }
 
@@ -916,9 +901,10 @@ public sealed class SpreadsheetImporter
     /// <param name="rowIndexes">The <see cref="SpreadsheetRow.Index"/> values to restore.</param>
     public void RestoreRows(IEnumerable<int> rowIndexes)
     {
-        foreach (var idx in rowIndexes) _manualDiscards.Remove(idx);
+        var changed = rowIndexes.ToList();
+        foreach (var idx in changed) _manualDiscards.Remove(idx);
         _selectedRows.Clear();
-        Recompute();
+        RefinalizeRows(changed);
         Changed?.Invoke();
     }
 
@@ -932,6 +918,8 @@ public sealed class SpreadsheetImporter
         {
             ReviewLevel = SpreadsheetReviewLevel.All;
         }
+        ReviewPage = 0;
+        BumpView();
         Changed?.Invoke();
     }
 
@@ -944,6 +932,8 @@ public sealed class SpreadsheetImporter
         {
             ReviewTab = SpreadsheetReviewTab.All;
         }
+        ReviewPage = 0;
+        BumpView();
         Changed?.Invoke();
     }
 
@@ -956,6 +946,8 @@ public sealed class SpreadsheetImporter
         {
             ReviewTab = SpreadsheetReviewTab.All;
         }
+        ReviewPage = 0;
+        BumpView();
         Changed?.Invoke();
     }
 
@@ -964,6 +956,60 @@ public sealed class SpreadsheetImporter
     public void SetReviewSearch(string search)
     {
         ReviewSearch = search;
+        ReviewPage = 0;
+        BumpView();
+        Changed?.Invoke();
+    }
+
+    /// <summary>How many rows <see cref="DefaultReviewPageSize"/> and <see cref="ReviewPageRows"/> use by default.</summary>
+    public const int DefaultReviewPageSize = 50;
+
+    private int _reviewPage;
+
+    /// <summary>The number of rows <see cref="ReviewPageRows"/> returns per page. See <see cref="SetReviewPageSize"/>.</summary>
+    public int ReviewPageSize { get; private set; } = DefaultReviewPageSize;
+
+    /// <summary>The 0-based page <see cref="ReviewPageRows"/> returns, kept inside the pages that exist. Changing a review filter goes back to the first page.</summary>
+    public int ReviewPage
+    {
+        get => Math.Clamp(_reviewPage, 0, Math.Max(0, ReviewPageCount - 1));
+        private set => _reviewPage = Math.Max(0, value);
+    }
+
+    /// <summary>The number of pages of <see cref="VisibleReviewRows"/> at <see cref="ReviewPageSize"/>. At least 1, so an empty table still has a first page.</summary>
+    public int ReviewPageCount => Math.Max(1, (VisibleReviewRows.Count + ReviewPageSize - 1) / ReviewPageSize);
+
+    /// <summary>The rows of the current page of <see cref="VisibleReviewRows"/>. A table renders this list, so a file of tens of thousands of rows renders one page of rows only.</summary>
+    public IReadOnlyList<SpreadsheetRow> ReviewPageRows
+    {
+        get
+        {
+            var visible = VisibleReviewRows;
+            var start = ReviewPage * ReviewPageSize;
+            if (start >= visible.Count) return [];
+            var length = Math.Min(ReviewPageSize, visible.Count - start);
+            return visible is SpreadsheetRow[] array ? new ArraySegment<SpreadsheetRow>(array, start, length) : visible.Skip(start).Take(length).ToArray();
+        }
+    }
+
+    /// <summary>Shows another page of the review rows. The number is clamped to the pages that exist.</summary>
+    /// <param name="page">The 0-based page.</param>
+    public void SetReviewPage(int page)
+    {
+        var clamped = Math.Clamp(page, 0, ReviewPageCount - 1);
+        if (clamped == ReviewPage) return;
+        _reviewPage = clamped;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Changes the number of rows per page and goes back to the first page.</summary>
+    /// <param name="pageSize">The rows per page, at least 1.</param>
+    public void SetReviewPageSize(int pageSize)
+    {
+        pageSize = Math.Max(1, pageSize);
+        if (pageSize == ReviewPageSize) return;
+        ReviewPageSize = pageSize;
+        _reviewPage = 0;
         Changed?.Invoke();
     }
 
@@ -995,7 +1041,7 @@ public sealed class SpreadsheetImporter
     /// <summary>Moves the inspector to the next non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none.</summary>
     public void InspectNextIssueRow()
     {
-        var withIssues = _rows.Where(r => r.DiscardReason is null && r.Issues.Any(i => i.Level != SpreadsheetIssueLevel.Info)).ToList();
+        var withIssues = _rowArr.Where(r => r.DiscardReason is null && r.Issues.Any(i => i.Level != SpreadsheetIssueLevel.Info)).ToList();
         if (withIssues.Count == 0) return;
         var curIdx = withIssues.FindIndex(r => r.Index == InspectedRowIndex);
         InspectedRowIndex = withIssues[(curIdx + 1) % withIssues.Count].Index;
@@ -1005,24 +1051,29 @@ public sealed class SpreadsheetImporter
     /// <summary>Moves the inspector to the previous non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none.</summary>
     public void InspectPreviousIssueRow()
     {
-        var withIssues = _rows.Where(r => r.DiscardReason is null && r.Issues.Any(i => i.Level != SpreadsheetIssueLevel.Info)).ToList();
+        var withIssues = _rowArr.Where(r => r.DiscardReason is null && r.Issues.Any(i => i.Level != SpreadsheetIssueLevel.Info)).ToList();
         if (withIssues.Count == 0) return;
         var curIdx = withIssues.FindIndex(r => r.Index == InspectedRowIndex);
         InspectedRowIndex = withIssues[(curIdx - 1 + withIssues.Count) % withIssues.Count].Index;
         Changed?.Invoke();
     }
 
-    /// <summary>The rows to show in a review table: the selected tab, narrowed by the severity filter, the issue filter and the search text. Each access builds a new list.</summary>
+    /// <summary>The rows to show in a review table: the selected tab, narrowed by the severity filter, the issue filter and the search text. The list is cached until a row or a filter changes, so reading it again is free.</summary>
     public IReadOnlyList<SpreadsheetRow> VisibleReviewRows
     {
         get
         {
+            if (_visibleCache.List is not null && _visibleCache.Rows == _rowsVersion && _visibleCache.View == _viewVersion)
+            {
+                return _visibleCache.List;
+            }
+
             IEnumerable<SpreadsheetRow> query = ReviewTab switch
             {
                 SpreadsheetReviewTab.Importable => ImportableRows,
                 SpreadsheetReviewTab.Invalid => InvalidRows,
                 SpreadsheetReviewTab.Discarded => DiscardedRows,
-                _ => _rows,
+                _ => _rowArr,
             };
 
             if (ReviewTab != SpreadsheetReviewTab.Discarded)
@@ -1054,7 +1105,9 @@ public sealed class SpreadsheetImporter
                     || c.Text.Contains(term, StringComparison.OrdinalIgnoreCase)));
             }
 
-            return query.ToList();
+            var list = query.ToArray();
+            _visibleCache = (_rowsVersion, _viewVersion, list);
+            return list;
         }
     }
 
@@ -1165,110 +1218,6 @@ public sealed class SpreadsheetImporter
         }
     }
 
-    /// <summary>
-    /// Sends every importable row to <see cref="SpreadsheetSchema.OnSubmit"/> in batches of <see cref="SpreadsheetSchema.BatchSize"/>.
-    /// It first calls <see cref="SpreadsheetColumnSchema.OnCreateOption"/> once for each value answered with Create. Rejected rows are kept
-    /// as errors on their row. An exception from a callback is caught and reported in <see cref="SubmitError"/>. Does nothing while a submit is running
-    /// or when <see cref="CanSubmit"/> is <see langword="false"/>. <see cref="ImportedCount"/> starts again from zero.
-    /// </summary>
-    /// <returns>A task that completes when the submit has finished or failed.</returns>
-    public async Task SubmitAsync()
-    {
-        if (SubmitStatus == SpreadsheetSubmitStatus.Running || !CanSubmit) return;
-        ImportedCount = 0;
-        await SendRowsAsync(createOptions: true, () => ImportableRows);
-    }
-
-    /// <summary>Sends again the rows the server rejected, that are still importable. The rejection issues are cleared before the send. Does nothing while a submit is running or when nothing was rejected.</summary>
-    /// <returns>A task that completes when the retry has finished or failed.</returns>
-    public async Task RetryRejectedAsync()
-    {
-        if (SubmitStatus == SpreadsheetSubmitStatus.Running || _serverRejections.Count == 0) return;
-        var rejectedIndexes = _serverRejections.Keys.ToHashSet();
-        _serverRejections.Clear();
-        Recompute();
-        await SendRowsAsync(createOptions: true, () => _rows.Where(r => rejectedIndexes.Contains(r.Index) && r.Importable).ToList());
-    }
-
-    private async Task SendRowsAsync(bool createOptions, Func<IReadOnlyList<SpreadsheetRow>> selectRows)
-    {
-        SubmitStatus = SpreadsheetSubmitStatus.Running;
-        SubmitDone = 0;
-        SubmitError = null;
-        Changed?.Invoke();
-
-        try
-        {
-            // Step 1: create the new options once each. The returned option becomes a Map answer, so the rows carry
-            // its value and a later send does not create it again.
-            if (createOptions && CreateAnsweredOptions())
-            {
-                Recompute();
-            }
-            var rowsToSend = selectRows();
-            SubmitTotal = rowsToSend.Count;
-
-            // Step 2: Send in batches
-            var batchSize = Schema.BatchSize > 0 ? Schema.BatchSize : Math.Max(1, rowsToSend.Count);
-            var rejectedAll = new List<SpreadsheetRejectedRow>();
-
-            for (var offset = 0; offset < rowsToSend.Count; offset += batchSize)
-            {
-                var batch = rowsToSend.Skip(offset).Take(batchSize).ToList();
-                if (Schema.OnSubmit is not null)
-                {
-                    var rejected = await Schema.OnSubmit(batch);
-                    if (rejected is { Count: > 0 })
-                    {
-                        rejectedAll.AddRange(rejected);
-                    }
-                }
-                SubmitDone = Math.Min(rowsToSend.Count, offset + batch.Count);
-                Changed?.Invoke();
-            }
-
-            _serverRejections.Clear();
-            foreach (var rej in rejectedAll)
-            {
-                if (!_serverRejections.TryGetValue(rej.RowIndex, out var list))
-                {
-                    list = [];
-                    _serverRejections[rej.RowIndex] = list;
-                }
-                list.Add(new SpreadsheetRowIssue(rej.Field, "server", SpreadsheetIssueLevel.Error, rej.Message));
-            }
-
-            ImportedCount += rowsToSend.Count - _serverRejections.Count;
-            SubmitStatus = SpreadsheetSubmitStatus.Done;
-            Recompute();
-        }
-        catch (Exception ex)
-        {
-            SubmitError = ex.Message;
-            SubmitStatus = SpreadsheetSubmitStatus.Error;
-        }
-        finally
-        {
-            Changed?.Invoke();
-        }
-    }
-
-    // Runs OnCreateOption for each value answered with Create, and records the returned option as a Map answer.
-    private bool CreateAnsweredOptions()
-    {
-        var created = false;
-        foreach (var q in _questions.Where(q => q.Answer?.Action == SpreadsheetValueAnswerAction.Create).ToList())
-        {
-            var col = Schema.Columns.FirstOrDefault(c => c.Key == q.FieldKey);
-            if (col?.OnCreateOption is null) continue;
-            var option = col.OnCreateOption(q.RawValue);
-            var value = string.IsNullOrEmpty(option?.Value) ? q.RawValue : option.Value;
-            _valueAnswers[q.Id] = new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, value, option?.Label ?? value);
-            created = true;
-        }
-        return created;
-    }
-
     /// <summary>Builds a CSV template for users to fill in: a header row and an example row for every column without <see cref="SpreadsheetColumnSchema.From"/>.</summary>
     /// <returns>Comma-separated text starting with a byte order mark. Headers are the first of <see cref="SpreadsheetColumnSchema.Headers"/>, or the label.</returns>
     public string ExportTemplateCsv()
@@ -1372,402 +1321,17 @@ public sealed class SpreadsheetImporter
         return (bestRow, Math.Max(0, bestMatches));
     }
 
-    private void Recompute()
+    // An answer only changes the rows that hold the value. Without a question for it (an Error policy raises none) the answer
+    // still applies to cells with that text, so the whole file is read again.
+    private void ReparseAnswered(string questionId)
     {
-        var sheet = CurrentSheet;
-        if (sheet is null || sheet.Rows.Count == 0 || _headerRowIndex >= sheet.Rows.Count)
+        var question = _questions.FirstOrDefault(q => q.Id == questionId);
+        if (question is null)
         {
-            Headers = [];
-            UnusedHeaders = [];
-            _fields = Schema.Columns.Select(c => new SpreadsheetFieldState(
-                c,
-                c.HasDefault ? SpreadsheetColumnStatus.Default : c.Required ? SpreadsheetColumnStatus.Missing : SpreadsheetColumnStatus.Unmatched,
-                null, null, null, [], null)).ToList();
-            _questions = [];
-            _rows = [];
+            Recompute();
             return;
         }
-
-        Headers = sheet.Rows[_headerRowIndex];
-        var dataRowSlice = sheet.Rows.Skip(_headerRowIndex + 1).ToList();
-        var dataRowNumbers = sheet.RowNumbers.Skip(_headerRowIndex + 1).ToList();
-
-        // 1. Match columns
-        var usedHeaders = new HashSet<int>();
-        var matchedIndexByField = new Dictionary<string, (int? Index, string? AssignedBy)>(StringComparer.Ordinal);
-
-        foreach (var col in Schema.Columns.Where(c => string.IsNullOrEmpty(c.From)))
-        {
-            if (_manualColumns.TryGetValue(col.Key, out var manualIdx))
-            {
-                if (manualIdx is { } idx && idx >= 0 && idx < Headers.Count)
-                {
-                    usedHeaders.Add(idx);
-                    matchedIndexByField[col.Key] = (idx, "user");
-                }
-                else
-                {
-                    matchedIndexByField[col.Key] = (null, null);
-                }
-            }
-        }
-
-        foreach (var col in Schema.Columns.Where(c => string.IsNullOrEmpty(c.From)))
-        {
-            if (matchedIndexByField.ContainsKey(col.Key)) continue;
-            int? found = null;
-            for (var h = 0; h < Headers.Count; h++)
-            {
-                if (usedHeaders.Contains(h) || string.IsNullOrWhiteSpace(Headers[h])) continue;
-                if (IsHeaderMatch(col, Headers[h]))
-                {
-                    found = h;
-                    usedHeaders.Add(h);
-                    break;
-                }
-            }
-            matchedIndexByField[col.Key] = (found, found.HasValue ? "file" : null);
-        }
-
-        var unusedHeaderIndices = Enumerable.Range(0, Headers.Count)
-            .Where(i => !usedHeaders.Contains(i) && !string.IsNullOrWhiteSpace(Headers[i]))
-            .ToList();
-        UnusedHeaders = unusedHeaderIndices.Select(i => Headers[i]).ToList();
-
-        // 2. Compute column states + 80% pass rate suggestions for missing columns
-        var suggestedHeadersTaken = new HashSet<int>();
-        var fieldStates = new List<SpreadsheetFieldState>(Schema.Columns.Count);
-        foreach (var col in Schema.Columns)
-        {
-            int? hIdx = null;
-            string? assignedBy = null;
-            if (string.IsNullOrEmpty(col.From) && matchedIndexByField.TryGetValue(col.Key, out var m))
-            {
-                hIdx = m.Index;
-                assignedBy = m.AssignedBy;
-            }
-
-            var status = hIdx.HasValue ? SpreadsheetColumnStatus.Matched
-                : !string.IsNullOrEmpty(col.From) ? SpreadsheetColumnStatus.Matched
-                : col.HasDefault ? SpreadsheetColumnStatus.Default
-                : col.Required ? SpreadsheetColumnStatus.Missing
-                : SpreadsheetColumnStatus.Unmatched;
-
-            var samples = hIdx.HasValue
-                ? CollectDistinctSamples(dataRowSlice, hIdx.Value, 3)
-                : [];
-
-            SpreadsheetColumnSuggestion? suggestion = null;
-            if (status == SpreadsheetColumnStatus.Missing &&CanSuggestColumn(col))
-            {
-                foreach (var candidateIdx in unusedHeaderIndices)
-                {
-                    if (suggestedHeadersTaken.Contains(candidateIdx)) continue;
-                    var sampleCells = CollectNonEmptyCells(dataRowSlice, candidateIdx, SuggestionSampleSize);
-                    if (sampleCells.Count < 2) continue;
-                    var passCount = sampleCells.Count(cell => PassesColumnCheck(col, cell, InvariantNumbers));
-                    if ((double)passCount / sampleCells.Count >= SuggestionPassRate)
-                    {
-                        suggestedHeadersTaken.Add(candidateIdx);
-                        suggestion = new SpreadsheetColumnSuggestion(
-                            candidateIdx,
-                            Headers[candidateIdx],
-                            sampleCells.Distinct(StringComparer.Ordinal).Take(3).ToList());
-                        break;
-                    }
-                }
-            }
-
-            fieldStates.Add(new SpreadsheetFieldState(
-                col,
-                status,
-                hIdx,
-                hIdx.HasValue ? Headers[hIdx.Value] : null,
-                assignedBy,
-                samples,
-                suggestion));
-        }
-        _fields = fieldStates;
-
-        // 3. Parse rows, track unknown select tokens, check duplicates & existing records
-        var unknownTokens = new Dictionary<string, (SpreadsheetColumnSchema Col, string RawValue, string NormKey, List<int> Rows)>(StringComparer.Ordinal);
-        var parsedRows = new List<(int Index, int RowNumber, Dictionary<string, object?> Data, Dictionary<string, SpreadsheetCellView> Cells, List<SpreadsheetRowIssue> Issues, bool SkippedByValue, bool Edited)>();
-
-        for (var rIdx = 0; rIdx < dataRowSlice.Count; rIdx++)
-        {
-            var rawCells = dataRowSlice[rIdx];
-            var fileRowNumber = dataRowNumbers[rIdx];
-            var rowData = new Dictionary<string, object?>(StringComparer.Ordinal);
-            var cellViews = new Dictionary<string, SpreadsheetCellView>(StringComparer.Ordinal);
-            var rowIssues = new List<SpreadsheetRowIssue>();
-            var skippedByValue = false;
-            var rowEdited = false;
-
-            foreach (var fState in _fields)
-            {
-                var col = fState.Column;
-                string originalText;
-                if (!string.IsNullOrEmpty(col.From) && cellViews.TryGetValue(col.From, out var fromCell))
-                {
-                    originalText = fromCell.Text;
-                }
-                else if (fState.HeaderIndex is { } hi && hi < rawCells.Count)
-                {
-                    originalText = rawCells[hi];
-                }
-                else
-                {
-                    originalText = "";
-                }
-
-                var hasEdit = _edits.TryGetValue((rIdx, col.Key), out var editedText);
-                var cellText = hasEdit ? editedText! : originalText;
-                if (hasEdit) rowEdited = true;
-
-                object? parsedVal = null;
-                var displayText = cellText;
-                var defaulted = false;
-                var created = false;
-                SpreadsheetRowIssue? fieldIssue = null;
-
-                if (string.IsNullOrWhiteSpace(cellText))
-                {
-                    if (col.HasDefault)
-                    {
-                        parsedVal = col.DefaultValue;
-                        displayText = col.DefaultValue?.ToString() ?? "";
-                        defaulted = true;
-                    }
-                    else if (col.Required)
-                    {
-                        fieldIssue = new SpreadsheetRowIssue(col.Key, "required", SpreadsheetIssueLevel.Error, "Required value is missing");
-                        rowIssues.Add(fieldIssue);
-                    }
-                }
-                else if (col.Kind == SpreadsheetColumnKind.Select)
-                {
-                    var matchedOpt = MatchSelectOption(col.Options, cellText);
-                    if (matchedOpt is not null)
-                    {
-                        parsedVal = matchedOpt.Value;
-                        displayText = matchedOpt.Label;
-                    }
-                    else
-                    {
-                        var normKey = NormalizeText(cellText);
-                        var qId = $"{col.Key}::{normKey}";
-                        _valueAnswers.TryGetValue(qId, out var userAns);
-                        var effectiveAns = userAns ?? PolicyToAnswer(col.UnknownPolicy);
-
-                        if (col.UnknownPolicy != SpreadsheetUnknownValuePolicy.Error)
-                        {
-                            if (!unknownTokens.TryGetValue(qId, out var entry))
-                            {
-                                entry = (col, cellText, normKey, []);
-                                unknownTokens[qId] = entry;
-                            }
-                            entry.Rows.Add(rIdx);
-                        }
-
-                        if (effectiveAns is not null)
-                        {
-                            switch (effectiveAns.Action)
-                            {
-                                case SpreadsheetValueAnswerAction.Map:
-                                    parsedVal = effectiveAns.MappedValue;
-                                    displayText = effectiveAns.MappedLabel ?? effectiveAns.MappedValue ?? cellText;
-                                    break;
-                                case SpreadsheetValueAnswerAction.Create:
-                                    parsedVal = cellText;
-                                    displayText = cellText;
-                                    created = true;
-                                    break;
-                                case SpreadsheetValueAnswerAction.LeaveEmpty:
-                                    parsedVal = null;
-                                    displayText = "";
-                                    break;
-                                case SpreadsheetValueAnswerAction.SkipRows:
-                                    skippedByValue = true;
-                                    fieldIssue = new SpreadsheetRowIssue(col.Key, "value.skipped", SpreadsheetIssueLevel.Info, $"Left out: \"{cellText}\" is set to skip its rows");
-                                    rowIssues.Add(fieldIssue);
-                                    break;
-                            }
-                        }
-                        else
-                        {
-                            var code = col.UnknownPolicy == SpreadsheetUnknownValuePolicy.Error ? "value.not-found" : "value.unknown";
-                            var msg = col.UnknownPolicy == SpreadsheetUnknownValuePolicy.Error
-                                ? $"\"{cellText}\" is not a known value"
-                                : $"\"{cellText}\" is not a known value · choose it in Values";
-                            fieldIssue = new SpreadsheetRowIssue(col.Key, code, SpreadsheetIssueLevel.Error, msg);
-                            rowIssues.Add(fieldIssue);
-                        }
-                    }
-                }
-                else
-                {
-                    if (!TryParseScalar(col, cellText, InvariantNumbers, out parsedVal, out var parseErr))
-                    {
-                        fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!);
-                        rowIssues.Add(fieldIssue);
-                    }
-                    else
-                    {
-                        displayText = parsedVal?.ToString() ?? cellText;
-                    }
-                }
-
-                // Run field rules on non-empty parsed values
-                if (parsedVal is not null && col.Rules is { Count: > 0 })
-                {
-                    foreach (var rule in col.Rules)
-                    {
-                        var passed = RunRule(rule, parsedVal, out var timedOut);
-                        if (!passed)
-                        {
-                            var ruleIssue = timedOut
-                                ? new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time")
-                                : new SpreadsheetRowIssue(col.Key, rule.Code, rule.Level, rule.Message);
-                            rowIssues.Add(ruleIssue);
-                            fieldIssue ??= ruleIssue;
-                        }
-                    }
-                }
-
-                rowData[col.Key] = parsedVal;
-                cellViews[col.Key] = new SpreadsheetCellView(cellText, originalText, displayText, hasEdit, defaulted, created, fieldIssue);
-            }
-
-            if (Schema.ValidateRow is not null)
-            {
-                var extraIssues = Schema.ValidateRow(rowData);
-                if (extraIssues is { Count: > 0 })
-                {
-                    rowIssues.AddRange(extraIssues);
-                }
-            }
-
-            if (_serverRejections.TryGetValue(rIdx, out var serverErrs))
-            {
-                rowIssues.AddRange(serverErrs);
-            }
-
-            parsedRows.Add((rIdx, fileRowNumber, rowData, cellViews, rowIssues, skippedByValue, rowEdited));
-        }
-
-        // 4. Duplicate key detection
-        var duplicateDiscards = new HashSet<int>();
-        if (!string.IsNullOrEmpty(Schema.RowKeyField))
-        {
-            var groups = parsedRows
-                .Select(r => (Row: r, Key: r.Data.TryGetValue(Schema.RowKeyField, out var kv) ? kv?.ToString()?.Trim().ToLowerInvariant() : null))
-                .Where(x => !string.IsNullOrEmpty(x.Key))
-                .GroupBy(x => x.Key!, StringComparer.Ordinal);
-
-            foreach (var grp in groups)
-            {
-                var members = grp.Select(g => g.Row).ToList();
-                if (members.Count <= 1) continue;
-                if (Schema.Duplicates == SpreadsheetDuplicatesPolicy.Error)
-                {
-                    foreach (var m in members)
-                    {
-                        var other = members.First(o => o.Index != m.Index);
-                        m.Issues.Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.duplicate", SpreadsheetIssueLevel.Error, $"Same key as row {other.RowNumber}"));
-                    }
-                }
-                else if (Schema.Duplicates == SpreadsheetDuplicatesPolicy.KeepFirst)
-                {
-                    foreach (var m in members.Skip(1)) duplicateDiscards.Add(m.Index);
-                }
-                else if (Schema.Duplicates == SpreadsheetDuplicatesPolicy.KeepLast)
-                {
-                    foreach (var m in members.Take(members.Count - 1)) duplicateDiscards.Add(m.Index);
-                }
-            }
-        }
-
-        // 5. Finalize rows with discard reasons, existing record modes, and statuses
-        var finalRows = new List<SpreadsheetRow>(parsedRows.Count);
-        foreach (var pr in parsedRows)
-        {
-            var mode = SpreadsheetRowMode.Create;
-            var existingDiscard = false;
-            if (!string.IsNullOrEmpty(Schema.RowKeyField)
-                && Schema.ExistingRecords is not null
-                && pr.Data.TryGetValue(Schema.RowKeyField, out var keyObj)
-                && keyObj?.ToString() is { Length: > 0 } keyStr
-                && Schema.ExistingRecords.ContainsKey(keyStr))
-            {
-                if (Schema.ExistingAction == SpreadsheetExistingAction.Update)
-                {
-                    mode = SpreadsheetRowMode.Update;
-                }
-                else if (Schema.ExistingAction == SpreadsheetExistingAction.Skip)
-                {
-                    mode = SpreadsheetRowMode.Skip;
-                    existingDiscard = true;
-                }
-                else if (Schema.ExistingAction == SpreadsheetExistingAction.Error)
-                {
-                    mode = SpreadsheetRowMode.Update;
-                    pr.Issues.Add(new SpreadsheetRowIssue(Schema.RowKeyField, "row.exists", SpreadsheetIssueLevel.Error, "Already stored"));
-                }
-            }
-
-            // Precedence: limit > value > duplicate > existing > manual
-            SpreadsheetDiscardReason? discard =
-                (Schema.MaxRows is { } maxR && pr.Index >= maxR) ? SpreadsheetDiscardReason.Limit
-                : pr.SkippedByValue ? SpreadsheetDiscardReason.Value
-                : duplicateDiscards.Contains(pr.Index) ? SpreadsheetDiscardReason.Duplicate
-                : existingDiscard ? SpreadsheetDiscardReason.Existing
-                : _manualDiscards.Contains(pr.Index) ? SpreadsheetDiscardReason.Manual
-                : null;
-
-            var hasError = pr.Issues.Any(i => i.Level == SpreadsheetIssueLevel.Error);
-            var hasWarning = pr.Issues.Any(i => i.Level == SpreadsheetIssueLevel.Warning);
-
-            var status = discard is not null ? SpreadsheetRowStatus.Discarded
-                : hasError ? SpreadsheetRowStatus.Blocking
-                : hasWarning ? SpreadsheetRowStatus.Warning
-                : SpreadsheetRowStatus.Valid;
-
-            var importable = discard is null && !hasError;
-            finalRows.Add(new SpreadsheetRow(
-                pr.Index,
-                pr.RowNumber,
-                pr.Data,
-                pr.Cells,
-                pr.Issues,
-                status,
-                discard,
-                mode,
-                pr.Edited,
-                importable));
-        }
-        _rows = finalRows;
-
-        // 6. Build value questions
-        var questionList = new List<SpreadsheetValueQuestion>();
-        foreach (var (qId, (col, rawVal, normKey, rowIndices)) in unknownTokens)
-        {
-            var hasUser = _valueAnswers.TryGetValue(qId, out var uAns);
-            var pAns = PolicyToAnswer(col.UnknownPolicy);
-            var effective = hasUser ? uAns : pAns;
-            var answeredBy = hasUser ? "user" : pAns is not null ? "policy" : null;
-            questionList.Add(new SpreadsheetValueQuestion(
-                qId,
-                col.Key,
-                col.EffectiveLabel,
-                rawVal,
-                normKey,
-                rowIndices,
-                col.Options ?? [],
-                effective,
-                answeredBy,
-                col.OnCreateOption is not null));
-        }
-        _questions = questionList;
+        ReparseRows(question.RowIndexes.ToList(), alwaysRebuildQuestions: true);
     }
 
     private static SpreadsheetValueAnswer? PolicyToAnswer(SpreadsheetUnknownValuePolicy policy) => policy switch
@@ -1796,11 +1360,11 @@ public sealed class SpreadsheetImporter
     private static bool CanSuggestColumn(SpreadsheetColumnSchema col) =>
         col.Kind != SpreadsheetColumnKind.Text || col.CustomParse is not null || col.Rules is { Count: > 0 };
 
-    private static bool PassesColumnCheck(SpreadsheetColumnSchema col, string sample, bool invariantNumbers)
+    private bool PassesColumnCheck(SpreadsheetColumnSchema col, string sample, bool invariantNumbers)
     {
         if (col.Kind == SpreadsheetColumnKind.Select)
         {
-            return MatchSelectOption(col.Options, sample) is not null;
+            return MatchSelectOption(col, sample) is not null;
         }
         if (!TryParseScalar(col, sample, invariantNumbers, out var val, out _)) return false;
         if (col.Rules is { Count: > 0 })
@@ -1808,18 +1372,6 @@ public sealed class SpreadsheetImporter
             return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _));
         }
         return true;
-    }
-
-    private static SpreadsheetOption? MatchSelectOption(IReadOnlyList<SpreadsheetOption>? options, string text)
-    {
-        if (options is null || options.Count == 0) return null;
-        var norm = NormalizeText(text);
-        foreach (var opt in options)
-        {
-            if (NormalizeText(opt.Label) == norm || NormalizeText(opt.Value) == norm) return opt;
-            if (opt.Aliases is not null && opt.Aliases.Any(a => NormalizeText(a) == norm)) return opt;
-        }
-        return null;
     }
 
     private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)

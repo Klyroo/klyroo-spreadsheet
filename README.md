@@ -1,6 +1,6 @@
 # Klyroo.Spreadsheet
 
-A .NET library that imports CSV, TSV and pasted spreadsheet data into your application, with column mapping, value mapping and row validation, for developers who build onboarding and bulk-edit screens.
+A .NET library that imports CSV, TSV, Excel (`.xlsx` and `.xls`) and pasted spreadsheet data into your application, with column mapping, value mapping and row validation, for developers who build onboarding and bulk-edit screens.
 
 [![CI](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/klyroo/klyroo-spreadsheet/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/vpre/Klyroo.Spreadsheet.svg)](https://www.nuget.org/packages/Klyroo.Spreadsheet)
@@ -17,6 +17,7 @@ User files rarely match your model: the header is on row 3, a column is named di
 - **Unknown value questions**: turns select cells that match no option into questions you answer by mapping, leaving empty, skipping the rows or creating the value, or resolves them automatically with a per-column policy.
 - **Duplicates and existing records**: detects repeated keys inside the file, keeps the first or last, and marks rows whose key already exists as updates, skips or errors.
 - **Inline correction**: edits cells, discards and restores rows, filters the review by tab, severity, issue and text, all without touching the source file.
+- **Large files**: parses a file once and then updates only the rows a change concerns, so editing a cell of a 50,000-row file takes milliseconds, and the wizard pages its review table and caps an import at 10,000 rows by default.
 - **Batched submit with retry**: sends importable rows to your callback in batches, shows the rows the server refused as errors on those rows, and sends only them again.
 
 ## Packages
@@ -175,7 +176,7 @@ Klyroo is a family of independent .NET libraries that compose. Each one has its 
 | [Klyroo.Form](https://github.com/klyroo/klyroo-form) | Schema-driven forms, validation and wizards |
 | [Klyroo.Dashboard](https://github.com/klyroo/klyroo-dashboard) | Dashboard controller, filters and Blazor blocks: stats, gauges, charts, tables and feeds |
 | [Klyroo.Display](https://github.com/klyroo/klyroo-display) | Read-only display blocks, media player controls and file preview |
-| **[Klyroo.Spreadsheet](https://github.com/klyroo/klyroo-spreadsheet)** | Import wizard for CSV, TSV and pasted data, with column and value mapping |
+| **[Klyroo.Spreadsheet](https://github.com/klyroo/klyroo-spreadsheet)** | Import wizard for CSV, TSV, Excel and pasted data, with column and value mapping |
 | [Klyroo.Agent](https://github.com/klyroo/klyroo-agent) | Bridge that lets AI agents read and act on Klyroo forms, dashboards and imports |
 | [Klyroo.Stack](https://github.com/klyroo/klyroo-stack) | Meta-package, MCP documentation server and `dotnet new` templates |
 

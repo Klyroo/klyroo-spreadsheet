@@ -1,6 +1,6 @@
 # Documentation
 
-Klyroo.Spreadsheet imports CSV, TSV and pasted data into a .NET application. Start with the [README](../README.md) for the overview, then pick a page.
+Klyroo.Spreadsheet imports CSV, TSV, Excel (`.xlsx`, `.xls`) and pasted data into a .NET application. Start with the [README](../README.md) for the overview, then pick a page.
 
 ## Tutorial
 
@@ -8,7 +8,7 @@ Klyroo.Spreadsheet imports CSV, TSV and pasted data into a .NET application. Sta
 
 ## How-to guides
 
-- [Guides](guides.md): typed columns and rules, banners and renamed headers, unknown values, duplicates and existing records, cross-field checks, batched submit and retry, Excel files, pasting, exports and tests.
+- [Guides](guides.md): typed columns and rules, banners and renamed headers, unknown values, duplicates and existing records, cross-field checks, batched submit and retry, Excel files, pasting, large files, exports and tests.
 
 ## Reference
 

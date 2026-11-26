@@ -10,6 +10,7 @@ Each guide solves one task and assumes you read [Getting started](getting-starte
 - [Submit in batches and retry rejected rows](#submit-in-batches-and-retry-rejected-rows)
 - [Read an Excel file](#read-an-excel-file)
 - [Let users paste rows in Blazor](#let-users-paste-rows-in-blazor)
+- [Import large files](#import-large-files)
 - [Export a template and the invalid rows](#export-a-template-and-the-invalid-rows)
 - [Test an import](#test-an-import)
 
@@ -324,6 +325,39 @@ Goal: accept rows copied from Excel or Google Sheets instead of a file.
 ```
 
 Without the wizard, call `Importer.NextStep()`, `PreviousStep()` and `SubmitAsync()` from your own buttons, and read `Importer.GetSteps()` to draw your own step bar.
+
+## Import large files
+
+Goal: let users review a file of tens of thousands of rows without a frozen page.
+
+The importer reads the file once, then updates only the rows a change concerns. Editing a cell re-validates that row, plus the rows that share its old or new key when you change the key, so an edit in a 50,000-row file takes milliseconds. The lists it builds (`ImportableRows`, `InvalidRows`, `DiscardedRows`, `VisibleReviewRows`) are cached until a row or a filter changes, so reading them again costs nothing.
+
+The review is paged. Build your own table on `ReviewPageRows` and move with `SetReviewPage` and `SetReviewPageSize`:
+
+```csharp
+var importer = new SpreadsheetImporter(schema);
+importer.LoadText(csv, "big.csv");
+
+importer.SetReviewPageSize(100);
+importer.SetReviewPage(2);
+foreach (var row in importer.ReviewPageRows)   // rows 201 to 300 of the current filter
+{
+    Console.WriteLine(row.RowNumber);
+}
+Console.WriteLine($"{importer.ReviewPage + 1} of {importer.ReviewPageCount}");
+```
+
+Changing a filter (`SetReviewTab`, `SetReviewLevel`, `SetReviewIssueFilter`, `SetReviewSearch`) goes back to the first page, and a page number is kept inside the pages that exist.
+
+`KlySpreadsheetImport` does this for you. Its review table renders one page (`PageSize`, 50 by default, with a page size list in the pager) and the pager is made of native buttons, so it works with the keyboard. The checkbox in the table header selects the rows of the current page.
+
+Cap the import with `SpreadsheetSchema.MaxRows`, or with the `MaxRows` parameter of the component, which is 10,000 by default and applies when the schema sets none (`MaxRows="@null"` removes it). Rows past the limit are left out with the discard reason `Limit`, and the component tells the user how many:
+
+```razor
+<KlySpreadsheetImport Importer="_importer" MaxRows="50000" PageSize="100" />
+```
+
+Headless, set `importer.DefaultMaxRows` for the same effect, and read `EffectiveMaxRows` and `LimitedRowCount` to tell your own users.
 
 ## Export a template and the invalid rows
 
