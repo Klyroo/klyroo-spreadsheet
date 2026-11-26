@@ -89,7 +89,8 @@ public sealed class ComprehensiveSpreadsheetTests
         rejectRow1 = false;
         await importer.RetryRejectedAsync();
         Assert.Equal(0, importer.RejectedCount);
-        Assert.Equal(1, importer.ImportedCount);
+        // A running total: 2 rows from the submit plus the 1 the retry got accepted.
+        Assert.Equal(3, importer.ImportedCount);
         Assert.Equal(SpreadsheetSubmitStatus.Done, importer.SubmitStatus);
     }
 }

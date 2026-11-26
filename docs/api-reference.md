@@ -4,7 +4,23 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Classes (3) · Records (13) · Enums (13)
+Static classes and extensions (1) · Classes (3) · Records (13) · Enums (13)
+
+### Static classes and extensions
+
+#### `SpreadsheetXlsxReader`
+
+`Klyroo.Spreadsheet` · service
+
+Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `SpreadsheetWorkbook`, with the base class library only. Every worksheet becomes a sheet. Shared, inline and formula strings are read as text, numbers keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become `TRUE` or `FALSE`, and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (`.xls`) is not supported.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `const MaxPartLength = 268435456` | `long` | The largest uncompressed size of one part of the file, 256 MB, beyond which the file is refused. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static Read(Stream stream, string fileName)` | `SpreadsheetWorkbook` | Reads a workbook. |
 
 ### Classes
 
@@ -35,7 +51,7 @@ Declares one field of the imported data: how to find it in the file, how to pars
 | `Key` (init) | `string` | The field name. It is the key of `SpreadsheetRow.Data` and `SpreadsheetRow.Cells`, and it also matches a file header. |
 | `Kind` (init) | `SpreadsheetColumnKind` | How cells are parsed. Defaults to `SpreadsheetColumnKind.Text`. |
 | `Label` (init) | `string?` | The display name, also matched against file headers. Defaults to `SpreadsheetColumnSchema.EffectiveLabel`. |
-| `OnCreateOption` (init) | `Func<string, SpreadsheetOption>?` | Called once per distinct value answered with `SpreadsheetValueAnswerAction.Create`, when the import is submitted and before any row is sent. Use it to persist the new option. The returned option is not read by the importer. Setting it also makes the component offer a create choice (`SpreadsheetValueQuestion.CanCreate`). |
+| `OnCreateOption` (init) | `Func<string, SpreadsheetOption>?` | Called once per distinct value answered with `SpreadsheetValueAnswerAction.Create`, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option: its `SpreadsheetOption.Value` in `SpreadsheetRow.Data` and its label in the review, and later sends do not call it again for that value. Setting it also makes the component offer a create choice (`SpreadsheetValueQuestion.CanCreate`). |
 | `Options` (init) | `IReadOnlyList<SpreadsheetOption>?` | The allowed values of a `SpreadsheetColumnKind.Select` column. |
 | `Required` (init) | `bool` | When `true`, an empty cell is a blocking issue (code `required`) and a file with no matching column cannot be submitted, unless the column has a default. |
 | `Rules` (init) | `IReadOnlyList<SpreadsheetRule>?` | Validation rules run, in order, on every non-empty parsed value. |
@@ -74,7 +90,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `HeaderRowNumber` | `int` | The file row number of the header row, for messages to the user. 1 when no file is loaded. |
 | `Headers` | `IReadOnlyList<string>` | The cell text of the header row. |
 | `ImportableRows` | `IReadOnlyList<SpreadsheetRow>` | The rows that would be sent on submit. Each access builds a new list. |
-| `ImportedCount` | `int` | The rows accepted by the last submit or retry: rows sent minus rows rejected. A retry replaces the value with its own count. |
+| `ImportedCount` | `int` | The rows accepted since the last `SpreadsheetImporter.SubmitAsync`: rows sent minus rows rejected, plus the rows each `SpreadsheetImporter.RetryRejectedAsync` got accepted. |
 | `InspectedRow` | `SpreadsheetRow?` | The row open in the inspector, or `null`. |
 | `InspectedRowIndex` | `int?` | The `SpreadsheetRow.Index` of the row open in the inspector, or `null`. |
 | `InvalidRows` | `IReadOnlyList<SpreadsheetRow>` | The rows with at least one error that are not discarded. |
@@ -82,7 +98,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `OpenQuestions` | `IReadOnlyList<SpreadsheetValueQuestion>` | The questions with no answer yet. Submission is blocked while this is not empty. |
 | `Questions` | `IReadOnlyList<SpreadsheetValueQuestion>` | Every unknown select value found in the file, answered or not. |
 | `RejectedCount` | `int` | The number of rows the server refused in the last submit and that have not been fixed or retried. |
-| `ReviewIssueFilter` | `string` | The issue filter applied to `SpreadsheetImporter.VisibleReviewRows`, as `fieldKey` or `fieldKey\|code`. Empty for none. |
+| `ReviewIssueFilter` | `string` | The issue filter applied to `SpreadsheetImporter.VisibleReviewRows`, as `fieldKey`, `fieldKey\|code`, or `\|code` for issues on the whole row (such as `row.duplicate`). Empty for none. |
 | `ReviewLevel` | `SpreadsheetReviewLevel` | The severity filter applied to `SpreadsheetImporter.VisibleReviewRows`. |
 | `ReviewSearch` | `string` | The text searched in the cells of `SpreadsheetImporter.VisibleReviewRows`. Empty for none. |
 | `ReviewTab` | `SpreadsheetReviewTab` | The row subset selected for `SpreadsheetImporter.VisibleReviewRows`. |
@@ -108,12 +124,13 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `ExportInvalidRowsCsv()` | `string` | Builds a CSV of the rows with errors so users can fix them in their own tool and import the file again. |
 | `ExportTemplateCsv()` | `string` | Builds a CSV template for users to fill in: a header row and an example row for every column without `SpreadsheetColumnSchema.From`. |
 | `GetSteps()` | `IReadOnlyList<SpreadsheetStepStatus>` | Returns the five wizard steps (file, columns, values, review, submit) with their current state. |
-| `GoToStep(string key)` | `void` | Jumps back to an earlier step. Forward jumps and skipped steps are ignored. |
+| `GoToStep(string key)` | `void` | Jumps back to an earlier step, including a step that was skipped because it had nothing to resolve, so users can still re-map a column. Forward jumps are ignored. |
 | `static HumanizeKey(string key)` | `string` | Turns a camelCase, PascalCase, snake_case or kebab-case key into words, for example `secureCode` into `Secure code`. |
 | `IgnoreColumn(string fieldKey)` | `void` | Declares that a schema column is not in the file, overriding automatic matching. A required column then becomes missing. |
 | `InspectNextIssueRow()` | `void` | Moves the inspector to the next non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectPreviousIssueRow()` | `void` | Moves the inspector to the previous non-discarded row that has a warning or an error, wrapping around. Does nothing when there is none. |
 | `InspectRow(int? rowIndex)` | `void` | Opens a row in the inspector, or closes the inspector. |
+| `LoadFileAsync(Stream content, string fileName, long maxBytes = 10485760, CancellationToken cancellationToken = null)` | `Task` | Reads a file and loads it: an `.xlsx` workbook through `SpreadsheetXlsxReader`, anything else as delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. |
 | `LoadText(string text, string fileName = "import.csv")` | `void` | Parses delimited text as a one-sheet workbook and loads it, replacing any previous file and discarding the user's corrections. |
 | `LoadWorkbook(SpreadsheetWorkbook workbook)` | `void` | Loads a prepared workbook, replacing any previous file and discarding the user's column choices, answers, edits and discards. Detects the sheet and header row unless the schema forces them. |
 | `NextStep()` | `bool` | Moves to the next step that is not skipped. |
@@ -131,7 +148,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `SetReviewSearch(string search)` | `void` | Filters the review rows to those with a cell containing the text, ignoring case. |
 | `SetReviewTab(SpreadsheetReviewTab tab)` | `void` | Selects the review subset and clears the selection. Choosing Importable or Discarded also resets the severity filter. |
 | `SetSheet(string sheetName)` | `void` | Switches to another sheet of the loaded file, re-detects its header row and clears column choices and discards. Does nothing for an unknown name. |
-| `SubmitAsync()` | `Task` | Sends every importable row to `SpreadsheetSchema.OnSubmit` in batches of `SpreadsheetSchema.BatchSize`. It first calls `SpreadsheetColumnSchema.OnCreateOption` once for each value answered with Create. Rejected rows are kept as errors on their row. An exception from a callback is caught and reported in `SpreadsheetImporter.SubmitError`. Does nothing while a submit is running. |
+| `SubmitAsync()` | `Task` | Sends every importable row to `SpreadsheetSchema.OnSubmit` in batches of `SpreadsheetSchema.BatchSize`. It first calls `SpreadsheetColumnSchema.OnCreateOption` once for each value answered with Create. Rejected rows are kept as errors on their row. An exception from a callback is caught and reported in `SpreadsheetImporter.SubmitError`. Does nothing while a submit is running or when `SpreadsheetImporter.CanSubmit` is `false`. `SpreadsheetImporter.ImportedCount` starts again from zero. |
 | `ToggleRowSelection(int rowIndex, bool selected)` | `void` | Adds a row to or removes it from the selection. |
 
 #### `SpreadsheetSchema`
@@ -404,6 +421,7 @@ A parsed file made of one or more sheets. Build one yourself to import a format 
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
+| `InvariantNumbers` (init) | `bool` | `true` when number cells hold invariant-culture text (`1234.5`), as in a workbook read by `SpreadsheetXlsxReader`. Number columns then read that form whatever their `SpreadsheetColumnSchema.DecimalSeparator`, and still accept text in the column's own convention. |
 | `Name` (init) | `string` | The file name, shown by the component. |
 | `Sheets` (init) | `IReadOnlyList<SpreadsheetSheet>` | The sheets of the file. |
 
@@ -588,7 +606,8 @@ Components (1) · Static classes and extensions (1)
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `Importer` | `SpreadsheetImporter` | The importer that holds the import state. The component renders it and calls its methods; it does not load a file, so call `SpreadsheetImporter.LoadText` or `SpreadsheetImporter.LoadWorkbook` yourself. |
+| `Importer` | `SpreadsheetImporter` | The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text or `.xlsx`, through `SpreadsheetImporter.LoadFileAsync`) or by pasting rows; your code can also call `SpreadsheetImporter.LoadText` or `SpreadsheetImporter.LoadWorkbook`. |
+| `MaxFileSize` | `long` | The largest file users can choose, in bytes. Defaults to 10 MB. |
 | `Title` | `string` | The heading shown above the wizard. Defaults to `Import`. |
 | `Wizard` | `bool` | Shows the step bar and the Back, Continue and Import buttons. When `false` only the current step is rendered and your code moves between steps with the importer's step methods. |
 

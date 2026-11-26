@@ -35,7 +35,7 @@ using Klyroo.Spreadsheet;
 builder.Services.AddKlyrooSpreadsheet();
 ```
 
-Then add the three stylesheet links of the [README](../README.md#installation) to `wwwroot/index.html` and use the component in a Razor page of the app. To load a file in a hybrid app, read it with the platform file picker and pass its text to `LoadText`. This repository has not been run on a device, so test the file-picking flow on each platform you ship.
+Then add the three stylesheet links of the [README](../README.md#installation) to `wwwroot/index.html` and use the component in a Razor page of the app. The file step uses Blazor's `InputFile`, which opens the platform file picker in a hybrid app; you can also read a file with the MAUI `FilePicker` and pass its stream to `LoadFileAsync`. This repository has not been run on a device, so test the file-picking flow on each platform you ship.
 
 If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreadsheet.Core` only and bind your view models to a `SpreadsheetImporter`: its `Changed` event and its read-only properties are enough to drive a custom UI.
 
@@ -47,6 +47,5 @@ If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreads
 
 ## Not supported
 
-- Reading `.xlsx` or `.xls`. See [Read an Excel file](guides.md#read-an-excel-file).
-- A built-in file picker or drag and drop target: the component draws a drop zone label, but it does not handle drops or file input.
+- Reading the legacy `.xls` format. `.xlsx` is supported, see [Read an Excel file](guides.md#read-an-excel-file).
 - Translated text. The component's labels and messages are English strings in the component, and the issue messages created by the importer are English too. You can supply your own text for rule messages (`SpreadsheetRule` takes a `Message`) and for `Label`.

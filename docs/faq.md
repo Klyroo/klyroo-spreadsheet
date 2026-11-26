@@ -4,13 +4,9 @@ Troubleshooting first, then known limitations, then common questions. Everything
 
 ## Troubleshooting
 
-**The wizard shows "Drop your file here" but dropping or choosing a file does nothing**
+**An `.xls` file is refused**
 
-The component draws the drop zone label and the list of expected columns, but it has no file input and no drop handler. Load the text yourself with `importer.LoadText(text, fileName)`, from an `InputFile`, a textarea or any other source, as in [Getting started](getting-started.md#6-build-the-page). The `Accept` list of the schema is only that label.
-
-**A `.xlsx` or `.xls` file cannot be read**
-
-Only delimited text is parsed, whatever `SpreadsheetSchema.Accept` lists. Read the workbook with your own library and pass it to `LoadWorkbook`, see [Read an Excel file](guides.md#read-an-excel-file).
+Only `.xlsx` workbooks are read; the legacy binary `.xls` format is not. Ask users to save the file as `.xlsx` or `.csv`. See [Read an Excel file](guides.md#read-an-excel-file).
 
 **A required column is reported as missing but the file has it**
 
@@ -41,10 +37,6 @@ The importer receives a `string`, so the problem is how you decoded the bytes. `
 
 Editing a cell clears that row's rejection, so the row leaves the retry set. See [Submit in batches and retry rejected rows](guides.md#submit-in-batches-and-retry-rejected-rows).
 
-**Users cannot re-map a column in the wizard**
-
-The columns step is skipped when no required column is missing, and a skipped step cannot be reached from the step bar. The values step works the same way. Call `AssignColumn`, `IgnoreColumn` and `ResetColumn` from your own UI if users must correct an automatic match.
-
 **Two users see each other's file**
 
 A `SpreadsheetImporter` holds the state of one import. If you registered it as a singleton or kept it in a static field, everyone shares it. Create one per user and per import, in a page field or a scoped service, and do not use it from several threads.
@@ -63,13 +55,9 @@ The page is rendered with Static SSR. The component needs an interactive render 
 
 ## Known limitations
 
-- **No Excel parsing and no file input in the component.** Both are your code, see above.
+- **No `.xls` and no formula evaluation.** `.xlsx` cells give the value Excel saved.
 - **English only.** Labels in the component and the messages of issues created by the importer are English. Rule messages and labels are the text you give.
-- **`ImportedCount` covers the last send.** After a retry it holds the count of that retry, not a running total.
-- **`SubmitAsync` does not check `CanSubmit`.** It sends the importable rows it has. With nothing importable, or no file loaded, it completes as `Done` with zero rows. Check `CanSubmit` first.
 - **No rollback.** If `OnSubmit` throws midway, batches already accepted stay accepted and the importer does not say which.
-- **`OnCreateOption`'s return value is ignored.** A created value is kept as the cell text, and your callback should persist it.
-- **`Description` and `Group` on a column are not rendered.** They are there for your own UI.
 - **The importer holds the whole file.** Every row is parsed again after each change, and the test suite covers 5,000 rows. Measure with your own schema before accepting much larger files, and set `MaxRows` to cap what users can upload.
 - **Row numbers count records, not lines.** `RowNumber` is the position of the record in the file, blank records included. A quoted field with a line break counts as one record.
 

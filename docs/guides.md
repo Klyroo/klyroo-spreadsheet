@@ -159,7 +159,7 @@ await importer.SubmitAsync();
 Console.WriteLine(string.Join(",", createdTiers)); // Platinum
 ```
 
-`Basic` matched the alias, so only three questions were asked. One answer applies to every row that has the value. The four actions are `Map` (use an existing option), `LeaveEmpty`, `SkipRows` (leave those rows out) and `Create` (keep the text as a new value). `OnCreateOption` runs once per created value when you submit, before any row is sent, so it is the place to insert the new option in your database. The importer does not read what it returns, and the created rows carry the original cell text as their value.
+`Basic` matched the alias, so only three questions were asked. One answer applies to every row that has the value. The four actions are `Map` (use an existing option), `LeaveEmpty`, `SkipRows` (leave those rows out) and `Create` (keep the text as a new value). `OnCreateOption` runs once per created value when you submit, before any row is sent, so it is the place to insert the new option in your database. The rows then carry the option it returns (its `Value` in `row.Data`, its label in the review), and a retry does not create it again.
 
 To skip the questions, set `UnknownPolicy` on the column. `LeaveEmpty`, `SkipRows` and `Create` answer for the user. `Error` does not ask and blocks each row with the unknown value:
 
@@ -274,7 +274,7 @@ Console.WriteLine(importer.InvalidRows[0].Issues[0].Code);                      
 
 lockedAccounts.Clear(); // the account was unlocked in the meantime
 await importer.RetryRejectedAsync();
-Console.WriteLine($"{importer.ImportedCount} imported, {importer.RejectedCount} rejected"); // 1 imported, 0 rejected
+Console.WriteLine($"{importer.ImportedCount} imported, {importer.RejectedCount} rejected"); // 2 imported, 0 rejected
 ```
 
 A refused row comes back as an error issue with code `server` on that row, so it appears under the Invalid tab of the review. `RetryRejectedAsync` sends those rows again as they are, and it reports only what that retry sent: `ImportedCount` is `1` again, not `2`. Keep your own running total if you need one.
@@ -285,27 +285,18 @@ If `OnSubmit` throws, the importer catches it, sets `SubmitStatus` to `Error` an
 
 ## Read an Excel file
 
-Goal: import `.xlsx` or `.xls` files.
+Goal: import `.xlsx` files.
 
-The library parses delimited text only. `Schema.Accept` lists `.xlsx` and `.xls` by default, but it only labels the drop zone of the component. To import a workbook, read it with a library of your choice, convert every cell to text, and hand the rows over as a `SpreadsheetWorkbook`:
+`LoadFileAsync` reads a workbook with `SpreadsheetXlsxReader`, which uses the base class library only and works under NativeAOT. The component calls it for a chosen or dropped file; from your own code, pass any stream:
 
 ```csharp
-public static SpreadsheetImporter FromRows(IEnumerable<string[]> rowsFromYourExcelReader)
-{
-    var rows = rowsFromYourExcelReader.Select(r => (IReadOnlyList<string>)r).ToList();
-    var numbers = Enumerable.Range(1, rows.Count).ToList();
-    var workbook = new SpreadsheetWorkbook("prices.xlsx", [new SpreadsheetSheet("Prices", rows, numbers)]);
-
-    var importer = new SpreadsheetImporter(new SpreadsheetSchema
-    {
-        Columns = [new SpreadsheetColumnSchema { Key = "sku", Required = true }],
-    });
-    importer.LoadWorkbook(workbook);
-    return importer;
-}
+await using var stream = File.OpenRead("prices.xlsx");
+await importer.LoadFileAsync(stream, "prices.xlsx");
 ```
 
-`RowNumbers` holds the row number of each entry of `Rows` in the original sheet, which is what the review shows to users and what `ForcedHeaderRow` refers to. Pass several sheets in one workbook to let the importer pick the best one. Format numbers and dates as text the way a user would type them, because the importer parses them with the rules of the column.
+Every worksheet becomes a sheet, and the importer picks the one whose header row matches the most columns; the component offers a sheet selector when there are several. Shared and inline strings are read as text, booleans as `TRUE` or `FALSE`, and cells formatted as dates as `yyyy-MM-dd` (with the time when there is one), which the default date formats of a `Date` column read. Numbers keep the invariant form `1234.5`, and a `Number` column reads that form whatever its `DecimalSeparator`. Formulas are not evaluated: the reader uses the value Excel saved with the file. The legacy `.xls` format is refused with an `InvalidDataException`; ask users to save as `.xlsx` or `.csv`.
+
+For another format, build a `SpreadsheetWorkbook` yourself and call `LoadWorkbook`. `RowNumbers` holds the row number of each entry of `Rows` in the original sheet, which is what the review shows to users and what `ForcedHeaderRow` refers to.
 
 ## Let users paste rows in Blazor
 

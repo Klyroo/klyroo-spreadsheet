@@ -280,7 +280,7 @@ public sealed class SpreadsheetColumnSchema
     public IReadOnlyList<SpreadsheetOption>? Options { get; init; }
     /// <summary>What to do with select cells that match no option. Defaults to <see cref="SpreadsheetUnknownValuePolicy.Ask"/>.</summary>
     public SpreadsheetUnknownValuePolicy UnknownPolicy { get; init; } = SpreadsheetUnknownValuePolicy.Ask;
-    /// <summary>Called once per distinct value answered with <see cref="SpreadsheetValueAnswerAction.Create"/>, when the import is submitted and before any row is sent. Use it to persist the new option. The returned option is not read by the importer. Setting it also makes the component offer a create choice (<see cref="SpreadsheetValueQuestion.CanCreate"/>).</summary>
+    /// <summary>Called once per distinct value answered with <see cref="SpreadsheetValueAnswerAction.Create"/>, when the import is submitted and before any row is sent. Use it to persist the new option. The rows then carry the returned option: its <see cref="SpreadsheetOption.Value"/> in <see cref="SpreadsheetRow.Data"/> and its label in the review, and later sends do not call it again for that value. Setting it also makes the component offer a create choice (<see cref="SpreadsheetValueQuestion.CanCreate"/>).</summary>
     public Func<string, SpreadsheetOption>? OnCreateOption { get; init; }
     /// <summary>Validation rules run, in order, on every non-empty parsed value.</summary>
     public IReadOnlyList<SpreadsheetRule>? Rules { get; init; }
@@ -347,7 +347,15 @@ public sealed record SpreadsheetSheet(
 /// <param name="Sheets">The sheets of the file.</param>
 public sealed record SpreadsheetWorkbook(
     string Name,
-    IReadOnlyList<SpreadsheetSheet> Sheets);
+    IReadOnlyList<SpreadsheetSheet> Sheets)
+{
+    /// <summary>
+    /// <see langword="true"/> when number cells hold invariant-culture text (<c>1234.5</c>), as in a workbook read by
+    /// <see cref="SpreadsheetXlsxReader"/>. Number columns then read that form whatever their
+    /// <see cref="SpreadsheetColumnSchema.DecimalSeparator"/>, and still accept text in the column's own convention.
+    /// </summary>
+    public bool InvariantNumbers { get; init; }
+}
 
 /// <summary>A file column offered for a missing required column because its sample values look right. The importer never applies it on its own.</summary>
 /// <param name="HeaderIndex">The index to pass to <see cref="SpreadsheetImporter.AssignColumn"/>.</param>
@@ -493,6 +501,7 @@ public sealed record SpreadsheetStepStatus(
 public sealed class SpreadsheetImporter
 {
     private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
+    private static readonly Regex InvariantNumber = new(@"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
     private static readonly Regex CommaDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:\.\d{3})+|\d*)(?:,\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
 
     /// <summary>How many leading rows of a sheet are scanned to find the header row.</summary>
@@ -603,7 +612,7 @@ public sealed class SpreadsheetImporter
     public SpreadsheetReviewTab ReviewTab { get; private set; } = SpreadsheetReviewTab.All;
     /// <summary>The severity filter applied to <see cref="VisibleReviewRows"/>.</summary>
     public SpreadsheetReviewLevel ReviewLevel { get; private set; } = SpreadsheetReviewLevel.All;
-    /// <summary>The issue filter applied to <see cref="VisibleReviewRows"/>, as <c>fieldKey</c> or <c>fieldKey|code</c>. Empty for none.</summary>
+    /// <summary>The issue filter applied to <see cref="VisibleReviewRows"/>, as <c>fieldKey</c>, <c>fieldKey|code</c>, or <c>|code</c> for issues on the whole row (such as <c>row.duplicate</c>). Empty for none.</summary>
     public string ReviewIssueFilter { get; private set; } = "";
     /// <summary>The text searched in the cells of <see cref="VisibleReviewRows"/>. Empty for none.</summary>
     public string ReviewSearch { get; private set; } = "";
@@ -616,6 +625,8 @@ public sealed class SpreadsheetImporter
     public SpreadsheetRow? InspectedRow =>
         InspectedRowIndex is { } idx ? _rows.FirstOrDefault(r => r.Index == idx) : null;
 
+    private bool InvariantNumbers => _workbook?.InvariantNumbers == true;
+
     // Submit state
     /// <summary>The state of the current or last submit.</summary>
     public SpreadsheetSubmitStatus SubmitStatus { get; private set; } = SpreadsheetSubmitStatus.Idle;
@@ -623,7 +634,7 @@ public sealed class SpreadsheetImporter
     public int SubmitDone { get; private set; }
     /// <summary>How many rows the current or last submit sends.</summary>
     public int SubmitTotal { get; private set; }
-    /// <summary>The rows accepted by the last submit or retry: rows sent minus rows rejected. A retry replaces the value with its own count.</summary>
+    /// <summary>The rows accepted since the last <see cref="SubmitAsync"/>: rows sent minus rows rejected, plus the rows each <see cref="RetryRejectedAsync"/> got accepted.</summary>
     public int ImportedCount { get; private set; }
     /// <summary>The number of rows the server refused in the last submit and that have not been fixed or retried.</summary>
     public int RejectedCount => _serverRejections.Count;
@@ -650,6 +661,59 @@ public sealed class SpreadsheetImporter
     /// <param name="fileName">The name to show.</param>
     public void Paste(string text, string fileName = "clipboard.tsv") =>
         LoadText(text, fileName);
+
+    /// <summary>
+    /// Reads a file and loads it: an <c>.xlsx</c> workbook through <see cref="SpreadsheetXlsxReader"/>, anything else as
+    /// delimited text decoded as UTF-8 (with or without a byte order mark), or as Latin-1 when the bytes are not valid UTF-8.
+    /// </summary>
+    /// <param name="content">The file content. It is copied to memory, so a browser or network stream can be passed as it is.</param>
+    /// <param name="fileName">The file name. Its extension selects the reader.</param>
+    /// <param name="maxBytes">The largest file accepted, in bytes (10 MB by default).</param>
+    /// <param name="cancellationToken">Cancels the copy.</param>
+    /// <returns>A task that completes when the file is loaded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, is an <c>.xls</c> file, or is not a valid <c>.xlsx</c> workbook.</exception>
+    public async Task LoadFileAsync(Stream content, string fileName, long maxBytes = 10 * 1024 * 1024, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        if (extension == ".xls")
+        {
+            throw new InvalidDataException("The .xls format is not supported. Save the file as .xlsx or .csv.");
+        }
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await content.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                throw new InvalidDataException($"The file is larger than {maxBytes / (1024 * 1024)} MB.");
+            }
+            buffer.Write(chunk, 0, read);
+        }
+        buffer.Position = 0;
+
+        if (extension == ".xlsx")
+        {
+            LoadWorkbook(SpreadsheetXlsxReader.Read(buffer, fileName));
+            return;
+        }
+        LoadText(DecodeText(buffer.ToArray()), fileName);
+    }
+
+    private static string DecodeText(byte[] bytes)
+    {
+        try
+        {
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.Latin1.GetString(bytes);
+        }
+    }
 
     /// <summary>Loads a prepared workbook, replacing any previous file and discarding the user's column choices, answers, edits and discards. Detects the sheet and header row unless the schema forces them.</summary>
     /// <param name="workbook">The workbook, for example built from an Excel reader of your choice.</param>
@@ -937,7 +1001,7 @@ public sealed class SpreadsheetImporter
                 var fKey = parts[0];
                 var code = parts.Length > 1 ? parts[1] : "*";
                 query = query.Where(r => r.Issues.Any(i =>
-                    i.Field == fKey && (code == "*" || i.Code == code)));
+                    (fKey.Length == 0 ? i.Field is null : i.Field == fKey) && (code == "*" || i.Code == code)));
             }
 
             if (!string.IsNullOrWhiteSpace(ReviewSearch))
@@ -1044,16 +1108,17 @@ public sealed class SpreadsheetImporter
         return false;
     }
 
-    /// <summary>Jumps back to an earlier step. Forward jumps and skipped steps are ignored.</summary>
+    /// <summary>Jumps back to an earlier step, including a step that was skipped because it had nothing to resolve, so users can still re-map a column. Forward jumps are ignored.</summary>
     /// <param name="key">The step key, see <see cref="SpreadsheetStepStatus.Key"/>.</param>
     public void GoToStep(string key)
     {
         var steps = GetSteps();
         var curIdx = steps.ToList().FindIndex(s => s.Key == CurrentStepKey);
         var targetIdx = steps.ToList().FindIndex(s => s.Key == key);
-        if (targetIdx >= 0 && targetIdx <= curIdx && !steps[targetIdx].Skipped)
+        if (targetIdx >= 0 && targetIdx <= curIdx)
         {
             CurrentStepKey = key;
+            _visitedSteps.Add(key);
             Changed?.Invoke();
         }
     }
@@ -1061,14 +1126,15 @@ public sealed class SpreadsheetImporter
     /// <summary>
     /// Sends every importable row to <see cref="SpreadsheetSchema.OnSubmit"/> in batches of <see cref="SpreadsheetSchema.BatchSize"/>.
     /// It first calls <see cref="SpreadsheetColumnSchema.OnCreateOption"/> once for each value answered with Create. Rejected rows are kept
-    /// as errors on their row. An exception from a callback is caught and reported in <see cref="SubmitError"/>. Does nothing while a submit is running.
+    /// as errors on their row. An exception from a callback is caught and reported in <see cref="SubmitError"/>. Does nothing while a submit is running
+    /// or when <see cref="CanSubmit"/> is <see langword="false"/>. <see cref="ImportedCount"/> starts again from zero.
     /// </summary>
     /// <returns>A task that completes when the submit has finished or failed.</returns>
     public async Task SubmitAsync()
     {
-        if (SubmitStatus == SpreadsheetSubmitStatus.Running) return;
-        var rowsToSend = ImportableRows;
-        await SendRowsAsync(rowsToSend);
+        if (SubmitStatus == SpreadsheetSubmitStatus.Running || !CanSubmit) return;
+        ImportedCount = 0;
+        await SendRowsAsync(createOptions: true, () => ImportableRows);
     }
 
     /// <summary>Sends again the rows the server rejected, that are still importable. The rejection issues are cleared before the send. Does nothing while a submit is running or when nothing was rejected.</summary>
@@ -1079,26 +1145,26 @@ public sealed class SpreadsheetImporter
         var rejectedIndexes = _serverRejections.Keys.ToHashSet();
         _serverRejections.Clear();
         Recompute();
-        var rowsToRetry = _rows.Where(r => rejectedIndexes.Contains(r.Index) && r.Importable).ToList();
-        await SendRowsAsync(rowsToRetry);
+        await SendRowsAsync(createOptions: true, () => _rows.Where(r => rejectedIndexes.Contains(r.Index) && r.Importable).ToList());
     }
 
-    private async Task SendRowsAsync(IReadOnlyList<SpreadsheetRow> rowsToSend)
+    private async Task SendRowsAsync(bool createOptions, Func<IReadOnlyList<SpreadsheetRow>> selectRows)
     {
         SubmitStatus = SpreadsheetSubmitStatus.Running;
         SubmitDone = 0;
-        SubmitTotal = rowsToSend.Count;
         SubmitError = null;
         Changed?.Invoke();
 
         try
         {
-            // Step 1: Run OnCreateOption handlers once per distinct answered-create question
-            foreach (var q in _questions.Where(q => q.Answer?.Action == SpreadsheetValueAnswerAction.Create))
+            // Step 1: create the new options once each. The returned option becomes a Map answer, so the rows carry
+            // its value and a later send does not create it again.
+            if (createOptions && CreateAnsweredOptions())
             {
-                var col = Schema.Columns.FirstOrDefault(c => c.Key == q.FieldKey);
-                col?.OnCreateOption?.Invoke(q.RawValue);
+                Recompute();
             }
+            var rowsToSend = selectRows();
+            SubmitTotal = rowsToSend.Count;
 
             // Step 2: Send in batches
             var batchSize = Schema.BatchSize > 0 ? Schema.BatchSize : Math.Max(1, rowsToSend.Count);
@@ -1130,7 +1196,7 @@ public sealed class SpreadsheetImporter
                 list.Add(new SpreadsheetRowIssue(rej.Field, "server", SpreadsheetIssueLevel.Error, rej.Message));
             }
 
-            ImportedCount = rowsToSend.Count - _serverRejections.Count;
+            ImportedCount += rowsToSend.Count - _serverRejections.Count;
             SubmitStatus = SpreadsheetSubmitStatus.Done;
             Recompute();
         }
@@ -1143,6 +1209,22 @@ public sealed class SpreadsheetImporter
         {
             Changed?.Invoke();
         }
+    }
+
+    // Runs OnCreateOption for each value answered with Create, and records the returned option as a Map answer.
+    private bool CreateAnsweredOptions()
+    {
+        var created = false;
+        foreach (var q in _questions.Where(q => q.Answer?.Action == SpreadsheetValueAnswerAction.Create).ToList())
+        {
+            var col = Schema.Columns.FirstOrDefault(c => c.Key == q.FieldKey);
+            if (col?.OnCreateOption is null) continue;
+            var option = col.OnCreateOption(q.RawValue);
+            var value = string.IsNullOrEmpty(option?.Value) ? q.RawValue : option.Value;
+            _valueAnswers[q.Id] = new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, value, option?.Label ?? value);
+            created = true;
+        }
+        return created;
     }
 
     /// <summary>Builds a CSV template for users to fill in: a header row and an example row for every column without <see cref="SpreadsheetColumnSchema.From"/>.</summary>
@@ -1341,7 +1423,7 @@ public sealed class SpreadsheetImporter
                     if (suggestedHeadersTaken.Contains(candidateIdx)) continue;
                     var sampleCells = CollectNonEmptyCells(dataRowSlice, candidateIdx, SuggestionSampleSize);
                     if (sampleCells.Count < 2) continue;
-                    var passCount = sampleCells.Count(cell => PassesColumnCheck(col, cell));
+                    var passCount = sampleCells.Count(cell => PassesColumnCheck(col, cell, InvariantNumbers));
                     if ((double)passCount / sampleCells.Count >= SuggestionPassRate)
                     {
                         suggestedHeadersTaken.Add(candidateIdx);
@@ -1482,7 +1564,7 @@ public sealed class SpreadsheetImporter
                 }
                 else
                 {
-                    if (!TryParseScalar(col, cellText, out parsedVal, out var parseErr))
+                    if (!TryParseScalar(col, cellText, InvariantNumbers, out parsedVal, out var parseErr))
                     {
                         fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!);
                         rowIssues.Add(fieldIssue);
@@ -1654,13 +1736,13 @@ public sealed class SpreadsheetImporter
     private static bool CanSuggestColumn(SpreadsheetColumnSchema col) =>
         col.Kind != SpreadsheetColumnKind.Text || col.CustomParse is not null || col.Rules is { Count: > 0 };
 
-    private static bool PassesColumnCheck(SpreadsheetColumnSchema col, string sample)
+    private static bool PassesColumnCheck(SpreadsheetColumnSchema col, string sample, bool invariantNumbers)
     {
         if (col.Kind == SpreadsheetColumnKind.Select)
         {
             return MatchSelectOption(col.Options, sample) is not null;
         }
-        if (!TryParseScalar(col, sample, out var val, out _)) return false;
+        if (!TryParseScalar(col, sample, invariantNumbers, out var val, out _)) return false;
         if (col.Rules is { Count: > 0 })
         {
             return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || r.Validate(val));
@@ -1680,7 +1762,7 @@ public sealed class SpreadsheetImporter
         return null;
     }
 
-    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, out object? value, out string? error)
+    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)
     {
         if (col.CustomParse is not null)
         {
@@ -1706,6 +1788,13 @@ public sealed class SpreadsheetImporter
                     .Replace("'", "", StringComparison.Ordinal);
                 // A thousands separator is accepted only between groups of three digits, so "12,50" with a
                 // '.' decimal mark is rejected instead of being read as 1250.
+                if (invariantNumbers && InvariantNumber.IsMatch(cleaned)
+                    && double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariantValue))
+                {
+                    value = invariantValue;
+                    error = null;
+                    return true;
+                }
                 var commaDecimal = col.DecimalSeparator == ',';
                 var wellFormed = (commaDecimal ? CommaDecimalNumber : DotDecimalNumber).IsMatch(cleaned);
                 cleaned = commaDecimal

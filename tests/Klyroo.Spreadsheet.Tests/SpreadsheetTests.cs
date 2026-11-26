@@ -177,6 +177,6 @@ public sealed class SpreadsheetTests : BunitContext
         await cut.InvokeAsync(() => importer.RetryRejectedAsync());
         cut.Render();
         Assert.Equal(0, importer.RejectedCount);
-        Assert.Equal(1, importer.ImportedCount);
+        Assert.Equal(2, importer.ImportedCount);
     }
 }

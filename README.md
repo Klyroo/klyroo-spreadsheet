@@ -99,18 +99,15 @@ Console.WriteLine(importer.InvalidRows.Count);    // 1: A-2 has a negative price
 await importer.SubmitAsync();
 ```
 
-In Blazor, give the same importer to `KlySpreadsheetImport`. The component does not read files itself, so load the text from an `InputFile`, a textarea or your own code:
+In Blazor, give the same importer to `KlySpreadsheetImport`. Users choose or drop a CSV, TSV or `.xlsx` file on its first step, or paste rows copied from a spreadsheet:
 
 ```razor
 @page "/prices/import"
 @using Klyroo.Spreadsheet
 
-<InputFile OnChange="LoadFile" accept=".csv,.tsv,.txt" />
-
 <KlySpreadsheetImport Importer="_importer" Title="Import prices" />
 
 @code {
-    private const long MaxBytes = 5 * 1024 * 1024;
     private SpreadsheetImporter _importer = default!;
 
     protected override void OnInitialized()
@@ -124,12 +121,6 @@ In Blazor, give the same importer to `KlySpreadsheetImport`. The component does 
             ],
             OnSubmit = SaveAsync,
         });
-    }
-
-    private async Task LoadFile(InputFileChangeEventArgs e)
-    {
-        using var reader = new StreamReader(e.File.OpenReadStream(MaxBytes));
-        _importer.LoadText(await reader.ReadToEndAsync(), e.File.Name);
     }
 
     private Task<IReadOnlyList<SpreadsheetRejectedRow>?> SaveAsync(IReadOnlyList<SpreadsheetRow> rows)
@@ -157,7 +148,7 @@ In Blazor, give the same importer to `KlySpreadsheetImport`. The component does 
 - `Klyroo.Spreadsheet.Core` targets `net10.0`, has no package dependencies and is marked `IsTrimmable` and `IsAotCompatible`.
 - `Klyroo.Spreadsheet` needs an interactive render mode (Interactive Server, WebAssembly or Auto): the component handles events through Blazor, so under Static SSR it renders but does not respond.
 - `Klyroo.Spreadsheet` declares the `browser`, `ios`, `android`, `maccatalyst` and `windows` platforms for .NET MAUI Blazor Hybrid.
-- Only delimited text (CSV, TSV, semicolon-separated) is parsed. Excel files need your own reader, see [Read an Excel file](docs/guides.md#read-an-excel-file).
+- Delimited text (CSV, TSV, semicolon-separated) and `.xlsx` workbooks are read. The legacy `.xls` format is not.
 
 ## Klyroo ecosystem
 

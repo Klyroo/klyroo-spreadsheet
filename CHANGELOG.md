@@ -6,8 +6,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `SpreadsheetXlsxReader` and `SpreadsheetImporter.LoadFileAsync`: `.xlsx` workbooks are read with the base class library only (shared and inline strings, numbers, booleans, dates, every worksheet), and text files are decoded as UTF-8 or Latin-1.
+- `KlySpreadsheetImport` reads files itself: users choose or drop a CSV, TSV or `.xlsx` file on the file step (`MaxFileSize`, 10 MB by default) or paste rows. It also offers a sheet and a header row selector, row selection with Leave out and Restore, severity and issue filters in the review, undo of edited cells in the row inspector, and shows column `Description` and `Group`.
+- `SpreadsheetWorkbook.InvariantNumbers`, so number cells of a typed workbook read whatever the column's decimal mark.
+
 ### Fixed
 
+- `ImportedCount` is a running total: a retry adds the rows it got accepted instead of replacing the count.
+- `SubmitAsync` does nothing unless `CanSubmit`, instead of completing as `Done` with zero rows.
+- The option returned by `OnCreateOption` is used: rows carry its value and label, and a retry does not create it again.
+- A step skipped because it had nothing to resolve, such as the columns step, can be reopened from the step bar to re-map a column.
+- An issue filter of `|code` matches issues on the whole row, such as `row.duplicate`.
 - A `Number` cell with a misplaced thousands separator, such as `12,50` with `DecimalSeparator = '.'`, is now rejected with a `number` issue instead of being read as `1250`.
 - `ExportInvalidRowsCsv` wrote the file's own headers above values in schema order, so columns were shifted when the file used another order. Headers now follow the schema columns.
 

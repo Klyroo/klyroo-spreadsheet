@@ -137,18 +137,15 @@ Load the stylesheets in `App.razor` or `wwwroot/index.html`, after the two style
 
 ## 6. Build the page
 
-`KlySpreadsheetImport` renders the five steps of the wizard (file, columns, values, review, import) for an importer you give it. It does not read files, so the page loads the text, here from an `InputFile`:
+`KlySpreadsheetImport` renders the five steps of the wizard (file, columns, values, review, import) for an importer you give it. Its first step lets users choose or drop a file (CSV, TSV, text or `.xlsx`, 10 MB at most by default, see `MaxFileSize`) or paste rows:
 
 ```razor
 @page "/prices/import"
 @using Klyroo.Spreadsheet
 
-<InputFile OnChange="LoadFile" accept=".csv,.tsv,.txt" />
-
 <KlySpreadsheetImport Importer="_importer" Title="Import prices" />
 
 @code {
-    private const long MaxBytes = 5 * 1024 * 1024;
     private SpreadsheetImporter _importer = default!;
 
     protected override void OnInitialized()
@@ -164,12 +161,6 @@ Load the stylesheets in `App.razor` or `wwwroot/index.html`, after the two style
         });
     }
 
-    private async Task LoadFile(InputFileChangeEventArgs e)
-    {
-        using var reader = new StreamReader(e.File.OpenReadStream(MaxBytes));
-        _importer.LoadText(await reader.ReadToEndAsync(), e.File.Name);
-    }
-
     private Task<IReadOnlyList<SpreadsheetRejectedRow>?> SaveAsync(IReadOnlyList<SpreadsheetRow> rows)
     {
         // Persist rows here. Return the rows the server refused, or null.
@@ -180,7 +171,7 @@ Load the stylesheets in `App.razor` or `wwwroot/index.html`, after the two style
 
 The page needs an interactive render mode, set on the page or for the whole app. After the file loads, the wizard shows a Continue button. It skips the columns step when every required column matched, and the values step when no select value is unknown, so a clean file goes straight to the review.
 
-The component subscribes to the importer's `Changed` event, which is why calling `LoadText` from your own handler is enough to update it. Keep the importer in a field of the page (one per user and per import), not in a singleton service.
+The component subscribes to the importer's `Changed` event, so a file your own code loads with `LoadText`, `LoadFileAsync` or `LoadWorkbook` shows up too. Keep the importer in a field of the page (one per user and per import), not in a singleton service.
 
 ## Next steps
 
