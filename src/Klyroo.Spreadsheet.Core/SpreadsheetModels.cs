@@ -789,6 +789,7 @@ public sealed partial class SpreadsheetImporter
         _lookedUpRecords.Clear();
         ReviewPage = 0;
         DetectLayout();
+        ApplySavedMappingOnLoad();
         Recompute();
         Changed?.Invoke();
     }
@@ -812,6 +813,7 @@ public sealed partial class SpreadsheetImporter
         _lookedUpKeys.Clear();
         _lookedUpRecords.Clear();
         ReviewPage = 0;
+        SavedMappingApplied = false;
         Recompute();
         Changed?.Invoke();
     }
@@ -827,6 +829,7 @@ public sealed partial class SpreadsheetImporter
         ResetSubmitState();
         _headerRowIndex = BestHeaderRowForSheet(CurrentSheet!).RowIndex;
         ReviewPage = 0;
+        ApplySavedMappingOnLoad();
         Recompute();
         Changed?.Invoke();
     }
@@ -841,6 +844,7 @@ public sealed partial class SpreadsheetImporter
         _manualDiscards.Clear();
         ResetSubmitState();
         ReviewPage = 0;
+        ApplySavedMappingOnLoad();
         Recompute();
         Changed?.Invoke();
     }
@@ -1341,7 +1345,7 @@ public sealed partial class SpreadsheetImporter
                 for (var c = 0; c < rowCells.Count; c++)
                 {
                     if (used.Contains(c) || string.IsNullOrWhiteSpace(rowCells[c])) continue;
-                    if (IsHeaderMatch(col, rowCells[c]))
+                    if (IsHeaderMatch(col, rowCells[c]) || IsSavedHeader(col, rowCells[c]))
                     {
                         used.Add(c);
                         matches++;
@@ -1525,6 +1529,11 @@ public sealed partial class SpreadsheetImporter
         }
         return list;
     }
+
+    // A header the saved mapping sends to this column counts when looking for the header row, so a file whose headers are renamed (and
+    // sit under a banner) is still read from the right row.
+    private bool IsSavedHeader(SpreadsheetColumnSchema col, string headerText) =>
+        _savedMapping is { } saved && saved.Columns.TryGetValue(NormalizeText(headerText), out var key) && key == col.Key;
 
     private static bool IsHeaderMatch(SpreadsheetColumnSchema col, string headerText)
     {

@@ -9,6 +9,7 @@ Each guide solves one task and assumes you read [Getting started](getting-starte
 - [Validate across fields](#validate-across-fields)
 - [Submit in batches and retry rejected rows](#submit-in-batches-and-retry-rejected-rows)
 - [Check rows and records against your server](#check-rows-and-records-against-your-server)
+- [Remember a column mapping](#remember-a-column-mapping)
 - [Read an Excel file](#read-an-excel-file)
 - [Let users paste rows in Blazor](#let-users-paste-rows-in-blazor)
 - [Import large files](#import-large-files)
@@ -368,6 +369,44 @@ var schema = new SpreadsheetSchema
 **When they run.** `await importer.ValidateAsync(cancellationToken)` runs the lookup and then the validation, on what was not checked yet. `NeedsAsyncValidation` tells whether anything changed since: loading a file, mapping a column or answering a value makes every row unchecked, and editing a row makes that row unchecked, which is also the only row sent next time. The component runs them when the review opens and again after edits, shows "Checking the rows" with a Cancel button, and shows the error with a Check again button when a callback throws. `SubmitAsync` runs them too when they are pending, so the rows it sends are the ones that passed: rows the validator flags are left out and show as invalid. `ValidationStatus` and `ValidationError` report the state, `CancelValidation()` stops a run, and the results of the batches that finished are kept. A failed run is not retried by itself: call `ValidateAsync` again.
 
 **Creating an option.** `OnCreateOptionAsync` is the asynchronous `OnCreateOption`. Setting either makes the component offer the create choice. When both are set, the asynchronous one is used.
+
+## Remember a column mapping
+
+Goal: do not make the same user map the same export every month.
+
+`GetMappingProfile()` captures the mapping the user finished: each file header that feeds a column, the columns they declared absent, and their answers to unknown values. It holds header texts, column keys and answers, never cell data. Store it with `ToJson()`:
+
+```csharp
+var importer = new SpreadsheetImporter(schema);
+importer.LoadText(file, "bank-march.csv");
+importer.AssignColumn("name", 0);                       // the user maps "Full name" to Name
+importer.AnswerValue("level", "Gold", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Map, "pro", "Pro"));
+await importer.SubmitAsync();
+
+var json = importer.GetMappingProfile().ToJson();       // keep it per user and per schema: a database row, local storage, a file
+```
+
+```json
+{
+  "version": 1,
+  "schemaKey": "people",
+  "columns": { "full name": "name", "e-mail address": "email", "plan": "level" },
+  "ignoredColumns": [ "note" ],
+  "valueAnswers": { "level::gold": { "action": "Map", "mappedValue": "pro", "mappedLabel": "Pro" } }
+}
+```
+
+Next time, give the stored profile to `SavedMapping` before loading the file:
+
+```csharp
+var next = new SpreadsheetImporter(schema) { SavedMapping = SpreadsheetMappingProfile.FromJson(json) };
+next.LoadText(nextFile, "bank-april.csv");
+Console.WriteLine(next.SavedMappingApplied);            // true: the columns are mapped, the "Gold" question is answered
+```
+
+The profile is applied whenever a file is loaded, or the user picks another sheet or header row, and every header it maps is present in the file (compared like column matching: case, accents and a trailing `*` ignored, any order, extra file columns allowed). It also helps to find the header row: a row whose headers the profile maps counts as a header row, so a renamed header under a banner is found. A file that does not match is read as usual, and the user can still change any choice, which wins over the profile. A profile made for another `SpreadsheetSchema.Key`, or of another `Version`, is never applied. `KlySpreadsheetImport` says "Your saved column mapping was applied" when it was. Use `ApplyMappingProfile(profile)` to apply one yourself and read what it did, and `MatchesMappingProfile(profile)` to test a file without applying anything.
+
+**Storing it.** `ToJson` and `FromJson` use `SpreadsheetMappingProfileJsonContext`, a source-generated `System.Text.Json` context, so they work under trimming and NativeAOT with no reflection. To store a profile inside your own JSON document, add `[JsonSerializable(typeof(SpreadsheetMappingProfile))]` to your own context. Save it after the import succeeds (`SubmitStatus` is `Done`) or when the user leaves the columns step: the importer raises `Changed` after each of these, so subscribe to it, or call `GetMappingProfile()` where your `OnSubmit` finishes. Do not store it in the browser for data that should follow the user across devices; a profile is small, so a row per user and schema is enough.
 
 ## Read an Excel file
 

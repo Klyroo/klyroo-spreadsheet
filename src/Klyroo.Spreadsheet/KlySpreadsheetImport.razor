@@ -334,6 +334,7 @@
                 </div>
 
                 @RenderRowLimitNotice()
+                @RenderSavedMappingNotice()
 
                 <div class="flex flex-wrap items-center gap-4 text-xs" data-slot="spreadsheet-layout">
                     @if (Importer.Sheets.Count > 1)
@@ -373,6 +374,16 @@
             @if (_downloadError is not null)
             {
                 <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-error)/10 px-3 py-2 text-xs text-(--klyroo-error-text)" role="alert" data-slot="spreadsheet-download-error">@_downloadError</p>
+            }
+        </text>;
+
+    private RenderFragment RenderSavedMappingNotice() =>
+        @<text>
+            @if (Importer.SavedMappingApplied)
+            {
+                <p class="m-0 rounded-(--klyroo-radius) bg-(--klyroo-success)/15 px-3 py-2 text-xs text-(--klyroo-success-text)" role="status" data-slot="spreadsheet-saved-mapping">
+                    Your saved column mapping was applied.
+                </p>
             }
         </text>;
 
@@ -416,6 +427,7 @@
 
     private RenderFragment RenderColumnsStep() =>
         @<div class="flex flex-col gap-3" data-slot="spreadsheet-column-mapping">
+            @RenderSavedMappingNotice()
             @foreach (var f in Importer.Fields.Where(f => string.IsNullOrEmpty(f.Column.From)))
             {
                 <div class="flex flex-wrap items-center justify-between gap-3 rounded-(--klyroo-radius) border border-(--klyroo-border) p-3"

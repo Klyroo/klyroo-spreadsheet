@@ -22,6 +22,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Downloads: `KlySpreadsheetImport` has a Download a template button on the file step and a Download the invalid rows button on the review step. In a browser they save the CSV through a small JavaScript module (`klyroo-spreadsheet.js`, `downloadText`); the `OnDownload` callback (`SpreadsheetDownload`: file name, content, media type) takes the file instead, for .NET MAUI Blazor Hybrid or custom storage.
 
+- Saved mappings: `SpreadsheetMappingProfile` (normalized header to column key, ignored columns, value answers) with `ToJson`/`FromJson` on a source-generated context (`SpreadsheetMappingProfileJsonContext`, safe for NativeAOT), `SpreadsheetImporter.GetMappingProfile()`, `ApplyMappingProfile()`, `MatchesMappingProfile()` and `SavedMapping`, which is applied automatically whenever a file, sheet or header row is loaded and every header of the profile is present. The profile also guides header row detection. The component says when a saved mapping was applied.
+
 ### Changed
 
 - `SubmitAsync` no longer starts `ImportedCount` again from zero and resends every importable row: it resumes with the rows that were not accepted (a second call after a complete submit sends nothing; `ResetSubmit()` sends everything again). The rejections of the batches that finished are kept when a later batch throws. The old behavior was the bug: a retry after a failed batch sent the accepted batches again.
