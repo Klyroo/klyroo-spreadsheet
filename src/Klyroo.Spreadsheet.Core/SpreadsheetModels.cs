@@ -353,8 +353,8 @@ public record SpreadsheetRow(
     bool Edited,
     bool Importable)
 {
-    // The parsed values by column key, typed like the row properties. Only the library reads them: hosts get them as a TRow.
-    internal IReadOnlyDictionary<string, object?> Data { get; init; } = new Dictionary<string, object?>();
+    // The parsed values, one per column of the schema in its order, typed like the row properties. Only the library reads them: hosts get them as a TRow.
+    internal object?[] Values { get; init; } = [];
 }
 
 /// <summary>A row with the parsed values as an instance of the row type. It is what the schema callbacks receive.</summary>
@@ -402,10 +402,6 @@ public sealed record SpreadsheetStepStatus(
 /// </remarks>
 public abstract partial class SpreadsheetImporter
 {
-    private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
-    private static readonly Regex InvariantNumber = new(@"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
-    private static readonly Regex CommaDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:\.\d{3})+|\d*)(?:,\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
-
     /// <summary>How many leading rows of a sheet are scanned to find the header row.</summary>
     public const int HeaderScanRows = 20;
     /// <summary>The share of sampled cells that must parse and pass the error-level rules before a file column is suggested for a missing column.</summary>
@@ -1355,7 +1351,7 @@ public abstract partial class SpreadsheetImporter
     }
 
     // Reads a non-empty, non-select cell into the typed value of its column. displayText is what the review table shows for it:
-    // the engine's reading (a number, an ISO 8601 date), or the typed value for a column with its own parser.
+    // the engine's reading (an ISO 8601 date), the value the host receives for a number, or the typed value for a column with its own parser.
     private static bool TryParseCell(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? typed, out string? displayText, out string? error, out bool localizable, out Exception? failure)
     {
         localizable = false;
@@ -1370,7 +1366,15 @@ public abstract partial class SpreadsheetImporter
             displayText = SpreadsheetValueConverter.DisplayText(col, typed);
             return true;
         }
-        if (!TryParseScalar(col, text, invariantNumbers, out var engine, out error))
+        if (col.Kind == SpreadsheetColumnKind.Number)
+        {
+            displayText = null;
+            if (!TryParseNumberCell(col, text, invariantNumbers, out typed, out error, out localizable)) return false;
+            // A number is shown as the value the host receives, in invariant form, whatever the culture of the server.
+            displayText = SpreadsheetValueConverter.Format(typed);
+            return true;
+        }
+        if (!TryParseScalar(col, text, out var engine, out error))
         {
             typed = null;
             displayText = null;
@@ -1378,43 +1382,60 @@ public abstract partial class SpreadsheetImporter
             return false;
         }
         displayText = engine?.ToString();
-        if (!col.TryConvert(engine, text, out typed, out error)) return false;
-        // A number is shown as the value the host receives, in invariant form, whatever the culture of the server.
-        if (col.Kind == SpreadsheetColumnKind.Number && typed is not null) displayText = SpreadsheetValueConverter.Format(typed);
-        return true;
+        return col.TryConvert(engine, text, out typed, out error);
     }
 
-    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? value, out string? error)
+    // Reads the text of a number cell into the property type in one pass: spaces, no-break spaces and apostrophes are dropped, the shape is checked, the
+    // separators are normalized to the plain form and the digits are read once, with no regular expression and no intermediate text.
+    private static bool TryParseNumberCell(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? typed, out string? error, out bool localizable)
+    {
+        typed = null;
+        localizable = false;
+        var buffer = text.Length <= 256 ? stackalloc char[text.Length] : new char[text.Length];
+        var length = 0;
+        foreach (var c in text)
+        {
+            if (c is not (' ' or '\u00A0' or '\'')) buffer[length++] = c;
+        }
+        var cleaned = buffer[..length];
+        NumberParts parts;
+        if (invariantNumbers && SpreadsheetNumberText.IsPlain(cleaned))
+        {
+            // Read as written. It can still fail here, on a digit that is not an ASCII one, and then it is not a mistake of the cell's text reading.
+            if (!SpreadsheetValueConverter.Decompose(cleaned, out parts))
+            {
+                error = $"\"{text}\" is not a number";
+                return false;
+            }
+        }
+        else
+        {
+            // A thousands separator is accepted only between groups of three digits, so "12,50" with a
+            // '.' decimal mark is rejected instead of being read as 1250.
+            var commaDecimal = col.DecimalSeparator == ',';
+            var wellFormed = commaDecimal ? SpreadsheetNumberText.IsGrouped(cleaned, '.', ',') : SpreadsheetNumberText.IsGrouped(cleaned, ',', '.');
+            var kept = 0;
+            for (var i = 0; i < cleaned.Length; i++)
+            {
+                var c = cleaned[i];
+                if (c == (commaDecimal ? '.' : ',')) continue;
+                cleaned[kept++] = commaDecimal && c == ',' ? '.' : c;
+            }
+            cleaned = cleaned[..kept];
+            if (!wellFormed || !SpreadsheetValueConverter.Decompose(cleaned, out parts))
+            {
+                error = $"\"{text}\" is not a number";
+                localizable = true;
+                return false;
+            }
+        }
+        return col.TryConvertNumber(cleaned, parts, text, out typed, out error);
+    }
+
+    private static bool TryParseScalar(SpreadsheetColumnSchema col, string text, out object? value, out string? error)
     {
         switch (col.Kind)
         {
-            case SpreadsheetColumnKind.Number:
-                var cleaned = text.Replace(" ", "", StringComparison.Ordinal)
-                    .Replace("\u00A0", "", StringComparison.Ordinal)
-                    .Replace("'", "", StringComparison.Ordinal);
-                // A thousands separator is accepted only between groups of three digits, so "12,50" with a
-                // '.' decimal mark is rejected instead of being read as 1250.
-                if (invariantNumbers && InvariantNumber.IsMatch(cleaned))
-                {
-                    value = cleaned;
-                    error = null;
-                    return true;
-                }
-                var commaDecimal = col.DecimalSeparator == ',';
-                var wellFormed = (commaDecimal ? CommaDecimalNumber : DotDecimalNumber).IsMatch(cleaned);
-                cleaned = commaDecimal
-                    ? cleaned.Replace(".", "", StringComparison.Ordinal).Replace(',', '.')
-                    : cleaned.Replace(",", "", StringComparison.Ordinal);
-                if (wellFormed && SpreadsheetValueConverter.IsNumberText(cleaned))
-                {
-                    value = cleaned;
-                    error = null;
-                    return true;
-                }
-                value = null;
-                error = $"\"{text}\" is not a number";
-                return false;
-
             case SpreadsheetColumnKind.Boolean:
                 var norm = NormalizeText(text);
                 if (DefaultTrueTexts.Contains(norm))

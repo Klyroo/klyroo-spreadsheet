@@ -90,6 +90,7 @@ internal static class SpreadsheetValueConverter
     /// </summary>
     internal static string KeyText(object? value) => value switch
     {
+        string s => s,
         DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         DateTime dt => IsoDateTime(dt),
         DateTimeOffset o => IsoDateTime(o.UtcDateTime),
@@ -166,16 +167,23 @@ internal static class SpreadsheetValueConverter
 
     // The text of a number as the engine reads it: an optional sign, digits with at most one '.', and an optional exponent, always with
     // '.' as the decimal mark. The value is read from this text into the property type, so no digit goes through a double on the way.
-    private static bool TryNumber(Type t, string text, string cellText, out object? value, out string? error)
+    internal static bool TryNumber(Type t, string text, string cellText, out object? value, out string? error)
     {
-        value = null;
-        error = null;
-        if (!Decompose(text, out var negative, out var digits, out var exp))
+        if (!Decompose(text, out var parts))
         {
+            value = null;
             error = $"\"{cellText}\" is not a number";
             return false;
         }
-        var zero = digits.Length == 0;
+        return TryNumber(t, text, parts, cellText, out value, out error);
+    }
+
+    // Reads the text into the property type from its decomposition, so a cell is scanned once whatever the type.
+    internal static bool TryNumber(Type t, ReadOnlySpan<char> text, in NumberParts parts, string cellText, out object? value, out string? error)
+    {
+        value = null;
+        error = null;
+        var zero = parts.IsZero;
         if (zero) text = "0";
         if (t == typeof(double))
         {
@@ -196,89 +204,145 @@ internal static class SpreadsheetValueConverter
         else if (t == typeof(decimal))
         {
             // 29 digits is the most a decimal holds. A value past them is out of range, and one with more decimals than it keeps is refused instead of rounded.
-            if (digits.Length + exp > 29)
+            if (parts.DigitCount + parts.Exp > 29)
             {
                 error = $"\"{cellText}\" is out of range";
                 return false;
             }
-            if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var m)
-                && Decompose(m.ToString(CultureInfo.InvariantCulture), out var mNegative, out var mDigits, out var mExp)
-                && mDigits == digits && mExp == exp && (mNegative == negative || zero))
+            if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var m) && IsExact(m, text, parts))
             {
                 value = m;
                 return true;
             }
-            error = digits.Length + exp >= 29 ? $"\"{cellText}\" is out of range" : $"\"{cellText}\" has more decimals than this column can hold";
+            error = parts.DigitCount + parts.Exp >= 29 ? $"\"{cellText}\" is out of range" : $"\"{cellText}\" has more decimals than this column can hold";
             return false;
         }
         else if (IsIntegral(t))
         {
-            if (exp < 0)
+            if (parts.Exp < 0)
             {
                 error = $"\"{cellText}\" is not a whole number";
                 return false;
             }
             // 20 digits is the most any of the integral types holds (ulong).
-            if (digits.Length + exp <= 20)
-            {
-                var whole = zero ? "0" : (negative ? "-" : "") + digits + new string('0', (int)exp);
-                if (TryInteger(t, whole, out value)) return true;
-            }
+            if (parts.DigitCount + parts.Exp <= 20 && TryMagnitude(text, parts, out var magnitude) && TryInteger(t, zero ? false : parts.Negative, magnitude, out value)) return true;
         }
         error = $"\"{cellText}\" is out of range";
         return false;
     }
 
-    private static bool TryInteger(Type t, string text, out object? value)
+    // Whether the decimal read from the text holds exactly the number the text writes. A decimal keeps any integer below 10^28 and a scale of up to 28,
+    // so a text inside those bounds is exact and needs no check; a longer one is read back from the decimal's own text and compared digit for digit.
+    private static bool IsExact(decimal m, ReadOnlySpan<char> text, in NumberParts parts)
+    {
+        if (parts.DigitCount <= 28 && parts.Exp >= -28 && parts.DigitCount + Math.Max(parts.Exp, 0) <= 28) return true;
+        Span<char> buffer = stackalloc char[64];
+        if (!m.TryFormat(buffer, out var written, default, CultureInfo.InvariantCulture)) return false;
+        var back = buffer[..written];
+        return Decompose(back, out var mParts)
+            && mParts.DigitCount == parts.DigitCount && mParts.Exp == parts.Exp && (mParts.Negative == parts.Negative || parts.IsZero)
+            && Digits(back, mParts) == Digits(text, parts);
+    }
+
+    // The significant digits of a decomposed text as a number, times the power of ten of its exponent: only for an exponent that is not negative.
+    private static bool TryMagnitude(ReadOnlySpan<char> text, in NumberParts parts, out ulong magnitude)
+    {
+        magnitude = 0;
+        if (parts.IsZero) return true;
+        var s = text.Trim();
+        for (var i = parts.FirstSignificant; i <= parts.LastSignificant; i++)
+        {
+            if (i == parts.Dot) continue;
+            var digit = (ulong)(s[i] - '0');
+            if (magnitude > (ulong.MaxValue - digit) / 10) return false;
+            magnitude = magnitude * 10 + digit;
+        }
+        for (var e = 0L; e < parts.Exp; e++)
+        {
+            if (magnitude > ulong.MaxValue / 10) return false;
+            magnitude *= 10;
+        }
+        return true;
+    }
+
+    private static bool TryInteger(Type t, bool negative, ulong magnitude, out object? value)
     {
         value = null;
-        const NumberStyles style = NumberStyles.AllowLeadingSign;
-        var culture = CultureInfo.InvariantCulture;
-        if (t == typeof(int)) { if (int.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(long)) { if (long.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(short)) { if (short.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(byte)) { if (byte.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(sbyte)) { if (sbyte.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(uint)) { if (uint.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(ulong)) { if (ulong.TryParse(text, style, culture, out var v)) { value = v; return true; } }
-        else if (t == typeof(ushort)) { if (ushort.TryParse(text, style, culture, out var v)) { value = v; return true; } }
+        unchecked
+        {
+            if (t == typeof(int)) { if (negative ? magnitude <= 1UL << 31 : magnitude <= int.MaxValue) { value = (int)(negative ? 0UL - magnitude : magnitude); return true; } }
+            else if (t == typeof(long)) { if (negative ? magnitude <= 1UL << 63 : magnitude <= long.MaxValue) { value = (long)(negative ? 0UL - magnitude : magnitude); return true; } }
+            else if (t == typeof(short)) { if (negative ? magnitude <= 1UL << 15 : magnitude <= (ulong)short.MaxValue) { value = (short)(negative ? 0UL - magnitude : magnitude); return true; } }
+            else if (t == typeof(sbyte)) { if (negative ? magnitude <= 1UL << 7 : magnitude <= (ulong)sbyte.MaxValue) { value = (sbyte)(negative ? 0UL - magnitude : magnitude); return true; } }
+            else if (!negative)
+            {
+                if (t == typeof(byte)) { if (magnitude <= byte.MaxValue) { value = (byte)magnitude; return true; } }
+                else if (t == typeof(uint)) { if (magnitude <= uint.MaxValue) { value = (uint)magnitude; return true; } }
+                else if (t == typeof(ulong)) { value = magnitude; return true; }
+                else if (t == typeof(ushort)) { if (magnitude <= ushort.MaxValue) { value = (ushort)magnitude; return true; } }
+            }
+        }
         return false;
     }
 
     /// <summary>Whether the text is a plain number as the engine writes it (sign, digits, one '.', exponent).</summary>
-    internal static bool IsNumberText(string text) => Decompose(text, out _, out _, out _);
+    internal static bool IsNumberText(ReadOnlySpan<char> text) => Decompose(text, out _);
 
-    // Splits a number text into its sign, its significant digits (no leading or trailing zeros) and the power of ten that scales them:
-    // 12.50 is digits "125" with exponent -1, and 1.2e3 is "12" with exponent 2. The exponent is capped so a hostile "1e999999999999999" cannot overflow.
-    // False when the text is not a plain decimal number. A zero has no digits.
-    private static bool Decompose(string text, out bool negative, out string digits, out long exp)
+    // The significant digits of a decomposed text: no leading or trailing zeros and no decimal mark.
+    private static string Digits(ReadOnlySpan<char> text, in NumberParts parts)
     {
-        negative = false;
-        digits = "";
-        exp = 0;
-        var s = text.AsSpan().Trim();
+        if (parts.IsZero) return "";
+        var s = text.Trim();
+        if (parts.Dot < parts.FirstSignificant || parts.Dot > parts.LastSignificant) return s[parts.FirstSignificant..(parts.LastSignificant + 1)].ToString();
+        return string.Concat(s[parts.FirstSignificant..parts.Dot], s[(parts.Dot + 1)..(parts.LastSignificant + 1)]);
+    }
+
+    // Splits a number text into its sign, how many significant digits it has (no leading or trailing zeros) and the power of ten that scales them:
+    // 12.50 is 3 digits "125" with exponent -1, and 1.2e3 is "12" with exponent 2. The exponent is capped so a hostile "1e999999999999999" cannot overflow.
+    // False when the text is not a plain decimal number. A zero has no digits. Nothing is allocated: the positions of the first and the last
+    // significant digit are kept so that the digits can be read back when they are needed.
+    internal static bool Decompose(ReadOnlySpan<char> text, out NumberParts parts)
+    {
+        parts = default;
+        var s = text.Trim();
         var i = 0;
+        var negative = false;
         if (i < s.Length && s[i] is '+' or '-')
         {
             negative = s[i] == '-';
             i++;
         }
-        var start = i;
         var dot = -1;
+        var digitsBeforeDot = 0;
+        var total = 0;
+        int firstPosition = -1, lastPosition = -1, firstIndex = -1, lastIndex = -1;
         for (; i < s.Length; i++)
         {
             var c = s[i];
-            if (c is >= '0' and <= '9') continue;
+            if (c is >= '0' and <= '9')
+            {
+                if (c != '0')
+                {
+                    if (firstIndex < 0)
+                    {
+                        firstIndex = total;
+                        firstPosition = i;
+                    }
+                    lastIndex = total;
+                    lastPosition = i;
+                }
+                total++;
+                continue;
+            }
             if (c == '.' && dot < 0)
             {
                 dot = i;
+                digitsBeforeDot = total;
                 continue;
             }
             break;
         }
-        var end = i;
-        var mantissaLength = end - start - (dot >= 0 ? 1 : 0);
-        if (mantissaLength == 0) return false;
+        if (total == 0) return false;
         long e = 0;
         if (i < s.Length)
         {
@@ -298,13 +362,14 @@ internal static class SpreadsheetValueConverter
             }
             if (exponentNegative) e = -e;
         }
-        var scale = dot < 0 ? 0 : end - dot - 1;
-        var mantissa = dot < 0 ? s[start..end].ToString() : string.Concat(s[start..dot], s[(dot + 1)..end]);
-        var significant = mantissa.TrimStart('0');
-        var trimmed = significant.TrimEnd('0');
-        if (trimmed.Length == 0) return true;
-        digits = trimmed;
-        exp = e - scale + (significant.Length - trimmed.Length);
+        if (firstIndex < 0)
+        {
+            parts = new NumberParts(negative, 0, 0, 0, 0, dot);
+            return true;
+        }
+        var scale = dot < 0 ? 0 : total - digitsBeforeDot;
+        var trailingZeros = total - 1 - lastIndex;
+        parts = new NumberParts(negative, lastIndex - firstIndex + 1, e - scale + trailingZeros, firstPosition, lastPosition, dot);
         return true;
     }
 
@@ -323,4 +388,16 @@ internal static class SpreadsheetValueConverter
         else value = instant.DateTime;
         return true;
     }
+}
+
+/// <summary>A number text split by <see cref="SpreadsheetValueConverter.Decompose"/>: the digits stay in the text, the struct holds where they are.</summary>
+/// <param name="Negative">Whether the text starts with a minus sign.</param>
+/// <param name="DigitCount">The number of significant digits: no leading or trailing zeros. Zero for the number zero.</param>
+/// <param name="Exp">The power of ten that scales the significant digits taken as a whole number.</param>
+/// <param name="FirstSignificant">The index of the first significant digit in the trimmed text.</param>
+/// <param name="LastSignificant">The index of the last significant digit in the trimmed text.</param>
+/// <param name="Dot">The index of the decimal mark in the trimmed text, or -1 when there is none.</param>
+internal readonly record struct NumberParts(bool Negative, int DigitCount, long Exp, int FirstSignificant, int LastSignificant, int Dot)
+{
+    public bool IsZero => DigitCount == 0;
 }

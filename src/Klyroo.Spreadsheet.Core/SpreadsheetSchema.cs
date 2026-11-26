@@ -37,6 +37,7 @@ public abstract class SpreadsheetSchema
         ForcedHeaderRow = forcedHeaderRow;
         Columns = columns;
         RowKeyField = rowKeyField;
+        RowKeyIndex = rowKeyField is null ? -1 : IndexOfColumn(columns, rowKeyField);
         Duplicates = duplicates;
         ExistingAction = existingAction;
         RuleTimeoutLimit = ruleTimeoutLimit;
@@ -72,7 +73,19 @@ public abstract class SpreadsheetSchema
     /// <summary>The number of keys passed to the existing-record lookup per call. Zero or less sends all keys in one call.</summary>
     public int LookupBatchSize { get; }
 
-    internal abstract IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data, out Exception? failure);
+    /// <summary>The position of the row key column in <see cref="Columns"/>, or -1 when there is no row key.</summary>
+    internal int RowKeyIndex { get; }
+
+    private static int IndexOfColumn(IReadOnlyList<SpreadsheetColumnSchema> columns, string key)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (columns[i].Key == key) return i;
+        }
+        return -1;
+    }
+
+    internal abstract IReadOnlyList<SpreadsheetRowIssue>? CheckRow(object?[] values, out Exception? failure);
     internal abstract bool HasSubmit { get; }
     internal abstract Task<IReadOnlyList<SpreadsheetRejectedRow>?> SubmitBatchAsync(IReadOnlyList<SpreadsheetRow> batch, CancellationToken cancellationToken);
     internal abstract bool HasValidateRowsAsync { get; }
@@ -147,13 +160,11 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
     public Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, TRow>>>? LookupExistingRecordsAsync { get; }
 
     /// <summary>Creates a row and fills its properties from the values the importer read.</summary>
-    internal TRow CreateValue(IReadOnlyDictionary<string, object?> data)
+    internal TRow CreateValue(object?[] values)
     {
         var row = _factory();
-        foreach (var column in _typedColumns)
-        {
-            if (data.TryGetValue(column.Key, out var value)) column.Assign(row, value);
-        }
+        var columns = _typedColumns;
+        for (var i = 0; i < columns.Length; i++) columns[i].Assign(row, values[i]);
         return row;
     }
 
@@ -163,7 +174,7 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
         if (row is SpreadsheetRow<TRow> typed) return typed;
         try
         {
-            return new SpreadsheetRow<TRow>(row, CreateValue(row.Data));
+            return new SpreadsheetRow<TRow>(row, CreateValue(row.Values));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -181,12 +192,12 @@ public sealed class SpreadsheetSchema<TRow> : SpreadsheetSchema where TRow : cla
     // Builds the row the host will receive, so a factory or a setter that throws is found while the file is read, then runs ValidateRow. An exception
     // of the host becomes an error issue on the row (code row.failed) instead of failing the load. The issue is generic: the text of the exception can
     // hold anything (a path, a connection string) and goes to the log through failure, never to the uploader. A cancellation goes to the caller.
-    internal override IReadOnlyList<SpreadsheetRowIssue>? CheckRow(IReadOnlyDictionary<string, object?> data, out Exception? failure)
+    internal override IReadOnlyList<SpreadsheetRowIssue>? CheckRow(object?[] values, out Exception? failure)
     {
         failure = null;
         try
         {
-            var value = CreateValue(data);
+            var value = CreateValue(values);
             return ValidateRow is { } validate ? validate(value) : null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -13,7 +13,7 @@ public abstract partial class SpreadsheetImporter
     {
         public required int Index { get; init; }
         public required int RowNumber { get; init; }
-        public required Dictionary<string, object?> Data { get; init; }
+        public required object?[] Values { get; init; }
         public required Dictionary<string, SpreadsheetCellView> Cells { get; init; }
         public required List<SpreadsheetRowIssue> Issues { get; init; }
         public required bool SkippedByValue { get; init; }
@@ -321,15 +321,16 @@ public abstract partial class SpreadsheetImporter
     private ParsedRow ParseRow(int rIdx)
     {
         var rawCells = _dataRows[rIdx];
-        var rowData = new Dictionary<string, object?>(StringComparer.Ordinal);
-        var cellViews = new Dictionary<string, SpreadsheetCellView>(StringComparer.Ordinal);
+        var rowValues = new object?[_fields.Count];
+        var cellViews = new Dictionary<string, SpreadsheetCellView>(_fields.Count, StringComparer.Ordinal);
         var rowIssues = new List<SpreadsheetRowIssue>();
         List<UnknownEntry>? unknown = null;
         var skippedByValue = false;
         var rowEdited = false;
 
-        foreach (var fState in _fields)
+        for (var fieldIndex = 0; fieldIndex < _fields.Count; fieldIndex++)
         {
+            var fState = _fields[fieldIndex];
             var col = fState.Column;
             string originalText;
             if (!string.IsNullOrEmpty(col.From) && cellViews.TryGetValue(col.From, out var fromCell))
@@ -505,11 +506,11 @@ public abstract partial class SpreadsheetImporter
                 }
             }
 
-            rowData[col.Key] = parsedVal;
+            rowValues[fieldIndex] = parsedVal;
             cellViews[col.Key] = new SpreadsheetCellView(cellText, originalText, displayText, hasEdit, defaulted, created, fieldIssue);
         }
 
-        var extraIssues = Schema.CheckRow(rowData, out var rowFailure);
+        var extraIssues = Schema.CheckRow(rowValues, out var rowFailure);
         if (rowFailure is not null) NoteHostFailure("the row factory, a property setter or ValidateRow", rowFailure);
         if (extraIssues is { Count: > 0 })
         {
@@ -517,9 +518,9 @@ public abstract partial class SpreadsheetImporter
         }
 
         string? duplicateKey = null;
-        if (!string.IsNullOrEmpty(Schema.RowKeyField) && rowData.TryGetValue(Schema.RowKeyField, out var keyValue))
+        if (Schema.RowKeyIndex >= 0)
         {
-            var key = KeyText(keyValue).Trim().ToLowerInvariant();
+            var key = KeyText(rowValues[Schema.RowKeyIndex]).Trim().ToLowerInvariant();
             if (!string.IsNullOrEmpty(key)) duplicateKey = key;
         }
 
@@ -527,7 +528,7 @@ public abstract partial class SpreadsheetImporter
         {
             Index = rIdx,
             RowNumber = _dataRowNumbers[rIdx],
-            Data = rowData,
+            Values = rowValues,
             Cells = cellViews,
             Issues = rowIssues,
             SkippedByValue = skippedByValue,
@@ -570,9 +571,8 @@ public abstract partial class SpreadsheetImporter
 
         var mode = SpreadsheetRowMode.Create;
         var existingDiscard = false;
-        if (!string.IsNullOrEmpty(Schema.RowKeyField)
-            && pr.Data.TryGetValue(Schema.RowKeyField, out var keyObj)
-            && KeyText(keyObj) is { Length: > 0 } keyStr
+        if (Schema.RowKeyIndex >= 0
+            && KeyText(pr.Values[Schema.RowKeyIndex]) is { Length: > 0 } keyStr
             && IsExistingKey(keyStr))
         {
             if (Schema.ExistingAction == SpreadsheetExistingAction.Update)
@@ -626,7 +626,7 @@ public abstract partial class SpreadsheetImporter
             pr.Edited,
             discard is null && !hasError)
         {
-            Data = pr.Data,
+            Values = pr.Values,
         };
     }
 

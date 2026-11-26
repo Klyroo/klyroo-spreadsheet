@@ -104,7 +104,7 @@ public abstract partial class SpreadsheetImporter
         foreach (var row in _rowArr)
         {
             if (row.DiscardReason == SpreadsheetDiscardReason.Limit) continue;
-            if (row.Data.TryGetValue(Schema.RowKeyField, out var value) && KeyText(value) is { Length: > 0 } key && seen.Add(key))
+            if (Schema.RowKeyIndex >= 0 && KeyText(row.Values[Schema.RowKeyIndex]) is { Length: > 0 } key && seen.Add(key))
             {
                 keys.Add(key);
             }

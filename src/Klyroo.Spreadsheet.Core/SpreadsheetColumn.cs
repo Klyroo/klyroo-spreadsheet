@@ -112,6 +112,7 @@ public abstract class SpreadsheetColumnSchema
     internal abstract bool HasParser { get; }
     internal abstract bool TryParseCustom(string text, out object? value, out string? error, out Exception? failure);
     internal abstract bool TryConvert(object? engineValue, string cellText, out object? typed, out string? error);
+    internal abstract bool TryConvertNumber(ReadOnlySpan<char> text, in NumberParts parts, string cellText, out object? typed, out string? error);
     internal abstract object? ConvertLoose(object? engineValue);
     internal abstract Task<SpreadsheetOption?> CreateOptionAsync(string rawValue, CancellationToken cancellationToken);
     internal abstract void Assign(object row, object? boxedValue);
@@ -180,6 +181,9 @@ public sealed class SpreadsheetColumn<TRow, TValue> : SpreadsheetColumn<TRow> wh
 
     internal override bool TryConvert(object? engineValue, string cellText, out object? typed, out string? error) =>
         SpreadsheetValueConverter.TryConvert(Under, Kind, engineValue, cellText, out typed, out error);
+
+    internal override bool TryConvertNumber(ReadOnlySpan<char> text, in NumberParts parts, string cellText, out object? typed, out string? error) =>
+        SpreadsheetValueConverter.TryNumber(Under, text, parts, cellText, out typed, out error);
 
     internal override object? ConvertLoose(object? engineValue) => SpreadsheetValueConverter.Loose(Under, engineValue);
 
