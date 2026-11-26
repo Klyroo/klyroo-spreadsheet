@@ -295,8 +295,11 @@ public sealed record SpreadsheetTexts
     /// <summary>The button that downloads the invalid rows, given their count (<c>"Download the 2 invalid rows"</c>).</summary>
     public Func<int, string> DownloadInvalidRows { get; init; } = n => n == 1 ? "Download the invalid row" : $"Download the {SpreadsheetLocales.Grouped(n, ",")} invalid rows";
 
-    /// <summary>The error shown when the browser download fails, given the reason (<c>"The file could not be downloaded: ..."</c>).</summary>
-    public Func<string, string> DownloadFailed { get; init; } = message => $"The file could not be downloaded: {message}";
+    /// <summary>The error shown when the browser download fails (<c>"The file could not be downloaded"</c>). It never carries the text of the exception.</summary>
+    public string DownloadFailed { get; init; } = "The file could not be downloaded";
+
+    /// <summary>The error shown when the file the user chose could not be read from the browser (<c>"The file could not be read"</c>). A file that is not a valid workbook has its own message, written by the library.</summary>
+    public string FileReadFailed { get; init; } = "The file could not be read";
 
     /// <summary>The heading of the last column of the invalid rows download (<c>"Issues"</c>).</summary>
     public string IssuesColumn { get; init; } = "Issues";
@@ -402,8 +405,11 @@ public sealed record SpreadsheetTexts
     /// <summary>The state of the checks after a cancellation (<c>"The check was cancelled"</c>).</summary>
     public string CheckCancelled { get; init; } = "The check was cancelled";
 
-    /// <summary>The state of the checks after a failure, given the message of the exception (<c>"The check failed: ..."</c>).</summary>
+    /// <summary>The state of the checks after a failure whose text is meant for the user (<see cref="Klyroo.Spreadsheet.SpreadsheetUserMessageException"/>), given that text (<c>"The check failed: ..."</c>).</summary>
     public Func<string, string> CheckFailed { get; init; } = message => $"The check failed: {message}";
+
+    /// <summary>The state of the checks after any other failure (<c>"The check failed"</c>); the exception goes to <see cref="Klyroo.Spreadsheet.SpreadsheetImporter.Logger"/>.</summary>
+    public string CheckFailedGeneric { get; init; } = "The check failed";
 
     /// <summary>The button that runs the checks again (<c>"Check again"</c>).</summary>
     public string CheckAgain { get; init; } = "Check again";

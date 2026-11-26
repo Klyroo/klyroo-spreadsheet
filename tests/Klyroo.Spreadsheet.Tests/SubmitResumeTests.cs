@@ -51,7 +51,7 @@ public sealed class SubmitResumeTests : BunitContext
         await importer.SubmitAsync(Token);
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
-        Assert.Equal("Database unavailable", importer.SubmitError);
+        Assert.Null(importer.SubmitError);
         Assert.Equal([0, 1, 2, 3], sent);
         Assert.Equal(4, importer.ImportedCount);
         Assert.Equal([0, 1, 2, 3], importer.AcceptedRowIndexes.Order());
@@ -160,14 +160,14 @@ public sealed class SubmitResumeTests : BunitContext
     }
 
     [Fact]
-    public async Task An_OperationCanceledException_the_host_throws_on_its_own_is_an_error_not_a_cancellation()
+    public async Task An_OperationCanceledException_the_host_throws_on_its_own_is_not_caught_and_leaves_an_error_status()
     {
         var importer = NewImporter(onSubmitAsync: (rows, token) => throw new OperationCanceledException("The server timed out"));
 
-        await importer.SubmitAsync(Token);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => importer.SubmitAsync(Token));
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
-        Assert.Equal("The server timed out", importer.SubmitError);
+        Assert.Null(importer.SubmitError);
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public sealed class SubmitResumeTests : BunitContext
     }
 
     [Fact]
-    public async Task A_failed_import_shows_the_error_and_a_button_that_resumes_without_resending()
+    public async Task A_failed_import_shows_a_generic_error_and_a_button_that_resumes_without_resending()
     {
         var sent = new List<int>();
         var fail = true;
@@ -320,7 +320,8 @@ public sealed class SubmitResumeTests : BunitContext
 
         await cut.InvokeAsync(() => importer.SubmitAsync(Token));
 
-        Assert.Equal("Database unavailable", cut.Find("[data-slot=spreadsheet-submit-error]").TextContent.Trim());
+        Assert.Equal("The import failed", cut.Find("[data-slot=spreadsheet-submit-error]").TextContent.Trim());
+        Assert.DoesNotContain("Database unavailable", cut.Markup, StringComparison.Ordinal);
         Assert.Equal("Try again", cut.Find("[data-slot=spreadsheet-submit-button]").TextContent.Trim());
 
         fail = false;

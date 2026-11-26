@@ -210,7 +210,7 @@ public sealed class TypedSchemaTests
         var importer = new SpreadsheetImporter<Order>(SpreadsheetSchema.For<Order>(sb =>
         {
             sb.Column(r => r.Token, c => c.Parser(text => Guid.TryParse(text, out var g) ? SpreadsheetParseResult<Guid?>.Ok(g) : SpreadsheetParseResult<Guid?>.Fail("Not a token")));
-            sb.Column(r => r.Reference, c => c.Parser(text => text == "boom" ? throw new FormatException("Exploded") : SpreadsheetParseResult<string?>.Ok(text.ToUpperInvariant())));
+            sb.Column(r => r.Reference, c => c.Parser(text => text == "boom" ? SpreadsheetParseResult<string?>.Fail("Exploded") : SpreadsheetParseResult<string?>.Ok(text.ToUpperInvariant())));
         }));
         var token = Guid.NewGuid();
         importer.LoadText($"Token;Reference\n{token};abc\nnope;boom", "o.csv");

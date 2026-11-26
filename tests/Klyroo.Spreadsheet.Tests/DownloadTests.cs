@@ -125,7 +125,8 @@ public sealed class DownloadTests : BunitContext
 
         var alert = cut.Find("[data-slot=spreadsheet-download-error]");
         Assert.Equal("alert", alert.GetAttribute("role"));
-        Assert.Contains("Downloads are blocked", alert.TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Downloads are blocked", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("The file could not be downloaded", alert.TextContent, StringComparison.Ordinal);
     }
 
     [Theory]

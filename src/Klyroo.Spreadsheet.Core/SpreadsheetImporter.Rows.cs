@@ -426,12 +426,22 @@ public abstract partial class SpreadsheetImporter
             }
             else
             {
-                if (!TryParseCell(col, cellText, InvariantNumbers, out parsedVal, out var parsedText, out var parseErr, out var localizable))
+                if (!TryParseCell(col, cellText, InvariantNumbers, out parsedVal, out var parsedText, out var parseErr, out var localizable, out var parseFailure))
                 {
-                    // Only a failure of the built-in text reading carries the cell text as an argument, so the component can show it in the
-                    // user's locale. A refusal by the column's own parser, or by the property type (1.5 in a whole number column), is shown as written.
-                    fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!, localizable ? [cellText] : null);
-                    rowIssues.Add(fieldIssue);
+                    if (parseFailure is not null)
+                    {
+                        // The column's own parser threw: a failure of the host, so the uploader gets the generic issue and the log the exception.
+                        NoteHostFailure($"the parser of the column '{col.Key}'", parseFailure);
+                        fieldIssue = RowFailedIssue(col.Key);
+                        rowIssues.Add(fieldIssue);
+                    }
+                    else
+                    {
+                        // Only a failure of the built-in text reading carries the cell text as an argument, so the component can show it in the
+                        // user's locale. A refusal by the column's own parser, or by the property type (1.5 in a whole number column), is shown as written.
+                        fieldIssue = new SpreadsheetRowIssue(col.Key, col.Kind.ToString().ToLowerInvariant(), SpreadsheetIssueLevel.Error, parseErr!, localizable ? [cellText] : null);
+                        rowIssues.Add(fieldIssue);
+                    }
                 }
                 else
                 {

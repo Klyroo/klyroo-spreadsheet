@@ -25,7 +25,7 @@ public abstract partial class SpreadsheetImporter
     /// <summary>The state of the last <see cref="ValidateAsync"/> run (or of the check <see cref="SubmitAsync"/> ran before sending).</summary>
     public SpreadsheetValidationStatus ValidationStatus { get; private set; } = SpreadsheetValidationStatus.Idle;
 
-    /// <summary>The message of the exception thrown by an async check callback, or <see langword="null"/>.</summary>
+    /// <summary>The message of a <see cref="SpreadsheetUserMessageException"/> thrown by an async check callback, shown as it is, or <see langword="null"/>. It is <see langword="null"/> too after any other exception (the component then shows a generic text, and the exception is logged through <see cref="Logger"/>), so check <see cref="ValidationStatus"/> for the failure.</summary>
     public string? ValidationError { get; private set; }
 
     /// <summary><see langword="true"/> when the schema defines <c>LookupExistingRecordsAsync</c> or <c>ValidateRowsAsync</c>.</summary>
@@ -41,7 +41,7 @@ public abstract partial class SpreadsheetImporter
     /// (<c>LookupExistingRecordsAsync</c>, which sets each row's <see cref="SpreadsheetRow.Mode"/> and applies <see cref="SpreadsheetSchema.ExistingAction"/>),
     /// then the batched validation of the rows that are not discarded and have no error (<c>ValidateRowsAsync</c>).
     /// Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap.
-    /// An exception is caught and reported in <see cref="ValidationError"/>; the results of the batches that finished are kept.
+    /// An exception is caught and the status becomes <see cref="SpreadsheetValidationStatus.Error"/> (<see cref="ValidationError"/> holds the text of a <see cref="SpreadsheetUserMessageException"/>, the others go to <see cref="Logger"/>); a cancellation the host throws on its own is not caught; the results of the batches that finished are kept.
     /// </summary>
     /// <param name="cancellationToken">Cancels the checks. <see cref="CancelValidation"/> does the same.</param>
     /// <returns>A task that completes when the checks have finished, failed or been cancelled. Does nothing without async checks, without a file, while a check or a submit is running.</returns>
@@ -75,10 +75,17 @@ public abstract partial class SpreadsheetImporter
             ValidationStatus = SpreadsheetValidationStatus.Cancelled;
             if (rethrow) throw;
         }
+        catch (OperationCanceledException)
+        {
+            // Not from the token of this run: the host's own cancellation is not caught, but the run is over.
+            ValidationStatus = SpreadsheetValidationStatus.Error;
+            throw;
+        }
         catch (Exception ex)
         {
-            ValidationError = ex.Message;
+            ValidationError = ex is SpreadsheetUserMessageException ? ex.Message : null;
             ValidationStatus = SpreadsheetValidationStatus.Error;
+            if (Logger is { } logger && !rethrow) SpreadsheetLog.CheckFailed(logger, ex);
             if (rethrow) throw;
         }
         finally

@@ -21,7 +21,7 @@ public abstract partial class SpreadsheetImporter
     /// <see cref="SpreadsheetSchema.BatchSize"/>. It first calls the column's create-option callback once for each value
     /// answered with Create, then runs the async checks of <see cref="ValidateAsync"/> when <see cref="NeedsAsyncValidation"/> (rows the checks flag with an error are left out of the send and shown as invalid).
     /// Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice.
-    /// An exception from a callback is caught and reported in <see cref="SubmitError"/>; a cancellation ends in <see cref="SpreadsheetSubmitStatus.Cancelled"/>.
+    /// An exception from a callback is caught and the status becomes <see cref="SpreadsheetSubmitStatus.Error"/> (<see cref="SubmitError"/> holds the text of a <see cref="SpreadsheetUserMessageException"/>, the others go to <see cref="Logger"/>); a cancellation the host throws on its own is not caught; a cancellation ends in <see cref="SpreadsheetSubmitStatus.Cancelled"/>.
     /// Does nothing while a submit is running or when <see cref="CanSubmit"/> is <see langword="false"/>.
     /// </summary>
     /// <param name="cancellationToken">Cancels the submit. The batch in flight is cancelled through the token given to the submit callback and counts as not accepted. <see cref="CancelSubmit"/> does the same.</param>
@@ -136,10 +136,17 @@ public abstract partial class SpreadsheetImporter
         {
             SubmitStatus = SpreadsheetSubmitStatus.Cancelled;
         }
+        catch (OperationCanceledException)
+        {
+            // Not from the token of this submit: the host's own cancellation is not caught, but the submit is over.
+            SubmitStatus = SpreadsheetSubmitStatus.Error;
+            throw;
+        }
         catch (Exception ex)
         {
-            SubmitError = ex.Message;
+            SubmitError = ex is SpreadsheetUserMessageException ? ex.Message : null;
             SubmitStatus = SpreadsheetSubmitStatus.Error;
+            if (Logger is { } logger) SpreadsheetLog.SubmitFailed(logger, ex);
         }
         finally
         {

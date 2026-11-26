@@ -166,7 +166,7 @@ public enum SpreadsheetSubmitStatus
     Running,
     /// <summary>The last submit finished. Rows may still have been rejected, see <see cref="SpreadsheetImporter.RejectedCount"/>.</summary>
     Done,
-    /// <summary>The submit callback threw. <see cref="SpreadsheetImporter.SubmitError"/> holds the message. The rows accepted before the failure stay accepted, and <see cref="SpreadsheetImporter.SubmitAsync"/> resumes with the rest.</summary>
+    /// <summary>The submit callback threw. <see cref="SpreadsheetImporter.SubmitError"/> holds the message when it was meant for the uploader (<see cref="SpreadsheetUserMessageException"/>); any other exception goes to <see cref="SpreadsheetImporter.Logger"/>. The rows accepted before the failure stay accepted, and <see cref="SpreadsheetImporter.SubmitAsync"/> resumes with the rest.</summary>
     Error,
     /// <summary>The submit was cancelled, through <see cref="SpreadsheetImporter.CancelSubmit"/> or the token given to <see cref="SpreadsheetImporter.SubmitAsync"/>. The rows accepted so far stay accepted, and <see cref="SpreadsheetImporter.SubmitAsync"/> resumes with the rest.</summary>
     Cancelled,
@@ -181,7 +181,7 @@ public enum SpreadsheetValidationStatus
     Running,
     /// <summary>The last run finished.</summary>
     Done,
-    /// <summary>A callback threw. <see cref="SpreadsheetImporter.ValidationError"/> holds the message.</summary>
+    /// <summary>A callback threw. <see cref="SpreadsheetImporter.ValidationError"/> holds the message when it was meant for the uploader (<see cref="SpreadsheetUserMessageException"/>); any other exception goes to <see cref="SpreadsheetImporter.Logger"/>.</summary>
     Error,
     /// <summary>The last run was cancelled before it finished.</summary>
     Cancelled,
@@ -554,7 +554,7 @@ public abstract partial class SpreadsheetImporter
     public int ImportedCount => _accepted.Count;
     /// <summary>The number of rows the server refused in the last submit and that have not been fixed or retried.</summary>
     public int RejectedCount => _serverRejections.Count;
-    /// <summary>The message of the exception thrown by the submit callback, or <see langword="null"/>.</summary>
+    /// <summary>The message of a <see cref="SpreadsheetUserMessageException"/> thrown by the submit callback, shown as it is, or <see langword="null"/>. It is <see langword="null"/> too after any other exception (the component then shows a generic text, and the exception is logged through <see cref="Logger"/>), so check <see cref="SubmitStatus"/> for the failure.</summary>
     public string? SubmitError { get; private set; }
 
     // Wizard steps state
@@ -1346,7 +1346,7 @@ public abstract partial class SpreadsheetImporter
         {
             return MatchSelectOption(col, sample) is not null;
         }
-        if (!TryParseCell(col, sample, invariantNumbers, out var val, out _, out _, out _)) return false;
+        if (!TryParseCell(col, sample, invariantNumbers, out var val, out _, out _, out _, out _)) return false;
         if (col.Rules is { Count: > 0 })
         {
             return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _, out _));
@@ -1356,12 +1356,13 @@ public abstract partial class SpreadsheetImporter
 
     // Reads a non-empty, non-select cell into the typed value of its column. displayText is what the review table shows for it:
     // the engine's reading (a number, an ISO 8601 date), or the typed value for a column with its own parser.
-    private static bool TryParseCell(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? typed, out string? displayText, out string? error, out bool localizable)
+    private static bool TryParseCell(SpreadsheetColumnSchema col, string text, bool invariantNumbers, out object? typed, out string? displayText, out string? error, out bool localizable, out Exception? failure)
     {
         localizable = false;
+        failure = null;
         if (col.HasParser)
         {
-            if (!col.TryParseCustom(text, out typed, out error))
+            if (!col.TryParseCustom(text, out typed, out error, out failure))
             {
                 displayText = null;
                 return false;

@@ -105,7 +105,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     }
 
     [Fact]
-    public async Task An_exception_from_OnCreateOptionAsync_is_reported_in_SubmitError()
+    public async Task An_exception_from_OnCreateOptionAsync_fails_the_submit_without_its_text()
     {
         var importer = CreateImporter((text, token) => throw new InvalidOperationException("Cannot create"));
         importer.AnswerValue("Level", "Z", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
@@ -113,7 +113,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         await importer.SubmitAsync(Token);
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
-        Assert.Equal("Cannot create", importer.SubmitError);
+        Assert.Null(importer.SubmitError);
     }
 
     // ValidateRowsAsync
@@ -244,7 +244,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
 
         await importer.ValidateAsync(Token);
         Assert.Equal(SpreadsheetValidationStatus.Error, importer.ValidationStatus);
-        Assert.Equal("Validation service is down", importer.ValidationError);
+        Assert.Null(importer.ValidationError);
 
         fail = false;
         await importer.ValidateAsync(Token);
@@ -283,7 +283,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     }
 
     [Fact]
-    public async Task A_failing_validator_stops_the_submit_with_its_message()
+    public async Task A_failing_validator_stops_the_submit_without_showing_its_text()
     {
         var sent = 0;
         var importer = ValidatingImporter(
@@ -293,7 +293,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
         await importer.SubmitAsync(Token);
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
-        Assert.Equal("Validation service is down", importer.SubmitError);
+        Assert.Null(importer.SubmitError);
         Assert.Equal(0, sent);
     }
 
@@ -491,7 +491,7 @@ public sealed class AsyncExtensionPointTests : BunitContext
     }
 
     [Fact]
-    public async Task A_failed_check_shows_its_message_and_a_button_to_check_again_without_looping()
+    public async Task A_failed_check_shows_a_generic_message_and_a_button_to_check_again_without_looping()
     {
         var calls = 0;
         var importer = ValidatingImporter((rows, token) =>
@@ -503,7 +503,8 @@ public sealed class AsyncExtensionPointTests : BunitContext
         var cut = Render<KlySpreadsheetImport>(p => p.Add(x => x.Importer, importer));
 
         cut.WaitForAssertion(() => Assert.Equal("error", cut.Find("[data-slot=spreadsheet-validation]").GetAttribute("data-state")));
-        Assert.Contains("Service down", cut.Find("[data-slot=spreadsheet-validation]").TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Service down", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("The check failed", cut.Find("[data-slot=spreadsheet-validation]").TextContent, StringComparison.Ordinal);
         await Task.Delay(100, Token);
         Assert.Equal(1, calls);                                  // an error is not retried by itself
 

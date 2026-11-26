@@ -166,7 +166,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
     }
 
     [Fact]
-    public async Task SpreadsheetImporter_captures_OnSubmit_exception_in_SubmitError()
+    public async Task SpreadsheetImporter_captures_OnSubmit_exception_without_showing_its_text()
     {
         var schema = SpreadsheetSchema.For<ImportRow>(sb =>
         {
@@ -180,7 +180,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
-        Assert.Equal("Database unavailable", importer.SubmitError);
+        Assert.Null(importer.SubmitError);
     }
 
     [Fact]

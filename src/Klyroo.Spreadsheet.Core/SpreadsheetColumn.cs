@@ -110,7 +110,7 @@ public abstract class SpreadsheetColumnSchema
 
     internal object? DefaultBoxed { get; set; }
     internal abstract bool HasParser { get; }
-    internal abstract bool TryParseCustom(string text, out object? value, out string? error);
+    internal abstract bool TryParseCustom(string text, out object? value, out string? error, out Exception? failure);
     internal abstract bool TryConvert(object? engineValue, string cellText, out object? typed, out string? error);
     internal abstract object? ConvertLoose(object? engineValue);
     internal abstract Task<SpreadsheetOption?> CreateOptionAsync(string rawValue, CancellationToken cancellationToken);
@@ -157,8 +157,11 @@ public sealed class SpreadsheetColumn<TRow, TValue> : SpreadsheetColumn<TRow> wh
 
     internal override bool HasParser => _parser is not null;
 
-    internal override bool TryParseCustom(string text, out object? value, out string? error)
+    // A parser that returns Fail keeps its own message. A parser that throws is a failure of the host: the caller gets the exception for the log, the
+    // uploader a generic issue. A cancellation goes to the caller.
+    internal override bool TryParseCustom(string text, out object? value, out string? error, out Exception? failure)
     {
+        failure = null;
         try
         {
             var result = _parser!(text);
@@ -166,10 +169,11 @@ public sealed class SpreadsheetColumn<TRow, TValue> : SpreadsheetColumn<TRow> wh
             error = result.IsOk ? null : result.Error ?? "Invalid value";
             return result.IsOk;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             value = null;
-            error = ex.Message;
+            error = null;
+            failure = ex;
             return false;
         }
     }

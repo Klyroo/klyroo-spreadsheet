@@ -487,7 +487,7 @@
                             SpreadsheetValidationStatus.Running => T.CheckingRows,
                             SpreadsheetValidationStatus.Done => T.RowsChecked,
                             SpreadsheetValidationStatus.Cancelled => T.CheckCancelled,
-                            _ => T.CheckFailed(Importer.ValidationError ?? ""),
+                            _ => Importer.ValidationError is { Length: > 0 } checkError ? T.CheckFailed(checkError) : T.CheckFailedGeneric,
                         })
                     </span>
                     @if (Importer.ValidationStatus == SpreadsheetValidationStatus.Running)
@@ -984,9 +984,9 @@
                     {
                         <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-submit-resume">
                             @T.AlreadyImported(Importer.ImportedCount)
-                            @if (Importer.SubmitError is not null)
+                            @if (Importer.SubmitStatus == SpreadsheetSubmitStatus.Error)
                             {
-                                <span class="block font-medium text-(--klyroo-error-text)" role="alert" data-slot="spreadsheet-submit-error">@Importer.SubmitError</span>
+                                <span class="block font-medium text-(--klyroo-error-text)" role="alert" data-slot="spreadsheet-submit-error">@(Importer.SubmitError ?? T.ImportFailed)</span>
                             }
                         </p>
                     }
@@ -1063,9 +1063,16 @@
             await using var stream = file.OpenReadStream(MaxFileSize);
             await Importer.LoadFileAsync(stream, file.Name, MaxFileSize);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        catch (InvalidDataException ex)
         {
+            // The readers of the library write these messages (not a workbook, a damaged archive), so they are shown.
             _fileError = ex.Message;
+        }
+        catch (IOException ex)
+        {
+            // An I/O failure of the browser stream or the disk can name a path: the uploader gets a generic text, the log the exception.
+            if (Importer.Logger is { } logger) SpreadsheetComponentLog.FileReadFailed(logger, ex);
+            _fileError = T.FileReadFailed;
         }
         finally
         {
@@ -1095,7 +1102,8 @@
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
         {
-            _downloadError = T.DownloadFailed(ex.Message);
+            if (Importer.Logger is { } logger) SpreadsheetComponentLog.DownloadFailed(logger, ex);
+            _downloadError = T.DownloadFailed;
         }
     }
 

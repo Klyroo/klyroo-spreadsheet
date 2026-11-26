@@ -206,7 +206,7 @@ public sealed class LocalizationTests : BunitContext
             sb.Column(r => r.Email, col => col
                 .Rule(SpreadsheetRule.Email("Use a company address"))
                 .Rule(SpreadsheetRule.Pattern("^a", "Starts with a")));
-            sb.Column(r => r.Age, col => col.Parser(text => throw new FormatException("Age is not valid here")));
+            sb.Column(r => r.Age, col => col.Parser(text => SpreadsheetParseResult<int?>.Fail("Age is not valid here")));
         }));
         importer.LoadText("Email;Age\nnope;1", "people.csv");
         importer.NextStep();
@@ -420,7 +420,7 @@ public sealed class LocalizationTests : BunitContext
 
         await cut.InvokeAsync(() => importer.SubmitAsync(Token));
 
-        cut.WaitForAssertion(() => Assert.Equal("The import failed. Database unavailable", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Equal("The import failed", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim()));
     }
 
     [Fact]

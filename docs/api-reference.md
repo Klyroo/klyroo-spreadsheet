@@ -4,7 +4,7 @@
 
 ## Klyroo.Spreadsheet.Core
 
-Static classes and extensions (3) · Classes (10) · Records (20) · Structs (1) · Enums (15) · Delegates (1)
+Static classes and extensions (3) · Classes (11) · Records (20) · Structs (1) · Enums (15) · Delegates (1)
 
 ### Static classes and extensions
 
@@ -190,11 +190,11 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `SelectedRowIndexes` | `IReadOnlySet<int>` | The indexes of the rows selected in the review table. |
 | `Sheets` | `IReadOnlyList<SpreadsheetSheet>` | The sheets of the loaded file. Empty when nothing is loaded. |
 | `SubmitDone` | `int` | How many rows of the current or last submit have been sent so far. |
-| `SubmitError` | `string?` | The message of the exception thrown by the submit callback, or `null`. |
+| `SubmitError` | `string?` | The message of a `SpreadsheetUserMessageException` thrown by the submit callback, shown as it is, or `null`. It is `null` too after any other exception (the component then shows a generic text, and the exception is logged through `SpreadsheetImporter.Logger`), so check `SpreadsheetImporter.SubmitStatus` for the failure. |
 | `SubmitStatus` | `SpreadsheetSubmitStatus` | The state of the current or last submit. |
 | `SubmitTotal` | `int` | How many rows the current or last submit sends. |
 | `UnusedHeaders` | `IReadOnlyList<string>` | The non-empty headers that no schema column uses. They are not imported. |
-| `ValidationError` | `string?` | The message of the exception thrown by an async check callback, or `null`. |
+| `ValidationError` | `string?` | The message of a `SpreadsheetUserMessageException` thrown by an async check callback, shown as it is, or `null`. It is `null` too after any other exception (the component then shows a generic text, and the exception is logged through `SpreadsheetImporter.Logger`), so check `SpreadsheetImporter.ValidationStatus` for the failure. |
 | `ValidationStatus` | `SpreadsheetValidationStatus` | The state of the last `SpreadsheetImporter.ValidateAsync` run (or of the check `SpreadsheetImporter.SubmitAsync` ran before sending). |
 | `VisibleReviewRows` | `IReadOnlyList<SpreadsheetRow>` | The rows to show in a review table: the selected tab, narrowed by the severity filter, the issue filter and the search text. The list is cached until a row or a filter changes, so reading it again is free. |
 
@@ -243,9 +243,9 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `SetReviewSearch(string search)` | `void` | Filters the review rows to those with a cell containing the text, ignoring case. |
 | `SetReviewTab(SpreadsheetReviewTab tab)` | `void` | Selects the review subset and clears the selection. Choosing Importable or Discarded also resets the severity filter. |
 | `SetSheet(string sheetName)` | `void` | Switches to another sheet of the loaded file, re-detects its header row and clears column choices and discards. Does nothing for an unknown name. |
-| `SubmitAsync(CancellationToken cancellationToken = null)` | `Task` | Sends every importable row that was not accepted yet to the schema's submit callback in batches of `SpreadsheetSchema.BatchSize`. It first calls the column's create-option callback once for each value answered with Create, then runs the async checks of `SpreadsheetImporter.ValidateAsync` when `SpreadsheetImporter.NeedsAsyncValidation` (rows the checks flag with an error are left out of the send and shown as invalid). Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice. An exception from a callback is caught and reported in `SpreadsheetImporter.SubmitError`; a cancellation ends in `SpreadsheetSubmitStatus.Cancelled`. Does nothing while a submit is running or when `SpreadsheetImporter.CanSubmit` is `false`. |
+| `SubmitAsync(CancellationToken cancellationToken = null)` | `Task` | Sends every importable row that was not accepted yet to the schema's submit callback in batches of `SpreadsheetSchema.BatchSize`. It first calls the column's create-option callback once for each value answered with Create, then runs the async checks of `SpreadsheetImporter.ValidateAsync` when `SpreadsheetImporter.NeedsAsyncValidation` (rows the checks flag with an error are left out of the send and shown as invalid). Rejected rows are kept as errors on their row. Calling it again after a failure or a cancellation resumes: the rows already accepted are not sent twice. An exception from a callback is caught and the status becomes `SpreadsheetSubmitStatus.Error` (`SpreadsheetImporter.SubmitError` holds the text of a `SpreadsheetUserMessageException`, the others go to `SpreadsheetImporter.Logger`); a cancellation the host throws on its own is not caught; a cancellation ends in `SpreadsheetSubmitStatus.Cancelled`. Does nothing while a submit is running or when `SpreadsheetImporter.CanSubmit` is `false`. |
 | `ToggleRowSelection(int rowIndex, bool selected)` | `void` | Adds a row to or removes it from the selection. |
-| `ValidateAsync(CancellationToken cancellationToken = null)` | `Task` | Runs the async checks the schema defines, on the rows that were not checked yet: first the existing-records lookup for the row keys that were not looked up (`LookupExistingRecordsAsync`, which sets each row's `SpreadsheetRow.Mode` and applies `SpreadsheetSchema.ExistingAction`), then the batched validation of the rows that are not discarded and have no error (`ValidateRowsAsync`). Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap. An exception is caught and reported in `SpreadsheetImporter.ValidationError`; the results of the batches that finished are kept. |
+| `ValidateAsync(CancellationToken cancellationToken = null)` | `Task` | Runs the async checks the schema defines, on the rows that were not checked yet: first the existing-records lookup for the row keys that were not looked up (`LookupExistingRecordsAsync`, which sets each row's `SpreadsheetRow.Mode` and applies `SpreadsheetSchema.ExistingAction`), then the batched validation of the rows that are not discarded and have no error (`ValidateRowsAsync`). Editing a row, or changing the column mapping or an answer, makes it unchecked again. Rows already checked are not sent twice, so calling it repeatedly is cheap. An exception is caught and the status becomes `SpreadsheetValidationStatus.Error` (`SpreadsheetImporter.ValidationError` holds the text of a `SpreadsheetUserMessageException`, the others go to `SpreadsheetImporter.Logger`); a cancellation the host throws on its own is not caught; the results of the batches that finished are kept. |
 
 #### `SpreadsheetImporter<TRow>`
 
@@ -356,6 +356,16 @@ Declares the columns and policies of a `SpreadsheetSchema`. Columns are declared
 | :--- | :--- | :--- |
 | `Column<TValue>(Expression<Func<TRow, TValue>> member, Action<SpreadsheetColumnBuilder<TRow, TValue>>? configure = null)` | `SpreadsheetColumn<TRow, TValue>` | Declares a column bound to a property of the row. Its kind follows the property type: text for `String`, number for numeric types, boolean for `Boolean`, date for `DateOnly`, `DateTime` and `DateTimeOffset`, select for an enum. A nullable type reads the same way and stores `null` for an empty cell. Other types need `SpreadsheetColumnBuilder.Parser`. |
 | `RowKey(SpreadsheetColumnSchema column)` | `void` | Sets the column that identifies a row, which enables the duplicate and existing-record checks. |
+
+#### `SpreadsheetUserMessageException`
+
+`Klyroo.Spreadsheet` · class · inherits `Exception`
+
+Throw it from a callback of the import (the submit, an async check) when the text of the exception is meant for the uploader: `SpreadsheetImporter.SubmitError` or `SpreadsheetImporter.ValidationError` then holds `Exception.Message` as it is, and the component shows it. Any other exception is logged and the uploader sees a generic, localized text, because the message of an exception can hold a path or a connection string. To refuse some rows with a message, prefer the typed way, `SpreadsheetRejectedRow` returned by the submit callback, or `SpreadsheetIndexedIssue` returned by `ValidateRowsAsync`; this exception is for a failure of the whole call, such as a closed import window.
+
+| Constructor | Description |
+| :--- | :--- |
+| `SpreadsheetUserMessageException(string message)` | Creates the exception. |
 
 ### Records
 
@@ -888,7 +898,7 @@ Where `SpreadsheetImporter.SubmitAsync` is in its lifecycle.
 | `Idle` | Nothing has been submitted since the file was loaded. |
 | `Running` | A submit or retry is in progress. |
 | `Done` | The last submit finished. Rows may still have been rejected, see `SpreadsheetImporter.RejectedCount`. |
-| `Error` | The submit callback threw. `SpreadsheetImporter.SubmitError` holds the message. The rows accepted before the failure stay accepted, and `SpreadsheetImporter.SubmitAsync` resumes with the rest. |
+| `Error` | The submit callback threw. `SpreadsheetImporter.SubmitError` holds the message when it was meant for the uploader (`SpreadsheetUserMessageException`); any other exception goes to `SpreadsheetImporter.Logger`. The rows accepted before the failure stay accepted, and `SpreadsheetImporter.SubmitAsync` resumes with the rest. |
 | `Cancelled` | The submit was cancelled, through `SpreadsheetImporter.CancelSubmit` or the token given to `SpreadsheetImporter.SubmitAsync`. The rows accepted so far stay accepted, and `SpreadsheetImporter.SubmitAsync` resumes with the rest. |
 
 #### `SpreadsheetUnknownValuePolicy`
@@ -916,7 +926,7 @@ Where the async checks of `SpreadsheetImporter.ValidateAsync` are in their lifec
 | `Idle` | No check has run since the file was loaded. |
 | `Running` | The checks are running. |
 | `Done` | The last run finished. |
-| `Error` | A callback threw. `SpreadsheetImporter.ValidationError` holds the message. |
+| `Error` | A callback threw. `SpreadsheetImporter.ValidationError` holds the message when it was meant for the uploader (`SpreadsheetUserMessageException`); any other exception goes to `SpreadsheetImporter.Logger`. |
 | `Cancelled` | The last run was cancelled before it finished. |
 
 #### `SpreadsheetValueAnswerAction`
@@ -1061,7 +1071,8 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `Cancel` (init) | `string` | The button that cancels a running import or check (`"Cancel"`). |
 | `CheckAgain` (init) | `string` | The button that runs the checks again (`"Check again"`). |
 | `CheckCancelled` (init) | `string` | The state of the checks after a cancellation (`"The check was cancelled"`). |
-| `CheckFailed` (init) | `Func<string, string>` | The state of the checks after a failure, given the message of the exception (`"The check failed: ..."`). |
+| `CheckFailed` (init) | `Func<string, string>` | The state of the checks after a failure whose text is meant for the user (`SpreadsheetUserMessageException`), given that text (`"The check failed: ..."`). |
+| `CheckFailedGeneric` (init) | `string` | The state of the checks after any other failure (`"The check failed"`); the exception goes to `SpreadsheetImporter.Logger`. |
 | `CheckingRows` (init) | `string` | The state of the checks while they run (`"Checking the rows…"`). |
 | `Choose` (init) | `string` | The first choice of an unanswered question (`"Choose…"`). |
 | `ChooseFileLabel` (init) | `string` | The accessible name of the file input (`"Choose a file to import"`). |
@@ -1074,7 +1085,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `ColumnStatus` (init) | `string` | The heading of the status column (`"Status"`). |
 | `Continue` (init) | `string` | The Continue button (`"Continue"`). |
 | `CreateValue` (init) | `Func<string, string>` | The choice that creates the value, given the value (`"Create \"Gold\""`). |
-| `DownloadFailed` (init) | `Func<string, string>` | The error shown when the browser download fails, given the reason (`"The file could not be downloaded: ..."`). |
+| `DownloadFailed` (init) | `string` | The error shown when the browser download fails (`"The file could not be downloaded"`). It never carries the text of the exception. |
 | `DownloadInvalidRows` (init) | `Func<int, string>` | The button that downloads the invalid rows, given their count (`"Download the 2 invalid rows"`). |
 | `DownloadTemplate` (init) | `string` | The button that downloads the CSV template (`"Download a template"`). |
 | `DropFileHere` (init) | `string` | The text of the drop zone (`"Drop your file here or click to choose one"`). |
@@ -1082,6 +1093,7 @@ The built-in texts of `KlySpreadsheetImport`: button labels, accessible names, e
 | `EmptyCell` (init) | `string` | The text of a cell with no value (`"empty"`). |
 | `Errors` (init) | `string` | The choice of the severity filter that shows rows with errors (`"Errors"`). |
 | `ExpectedColumns` (init) | `string` | The label above the columns the schema expects (`"Expected columns:"`). |
+| `FileReadFailed` (init) | `string` | The error shown when the file the user chose could not be read from the browser (`"The file could not be read"`). A file that is not a valid workbook has its own message, written by the library. |
 | `FileSummary` (init) | `Func<int, int, int, string>` | The summary of the loaded file, given the number of rows, the number of sheets and the row number of the header (`"120 rows · 2 sheets · Column names on row 1"`). |
 | `FileTooLarge` (init) | `Func<int, string>` | The error for a file over `MaxFileSize`, given the limit in megabytes (`"The file is larger than 10 MB."`). |
 | `FirstPage` (init) | `string` | The accessible name of the first page button (`"First page"`). |
