@@ -6,7 +6,7 @@ Troubleshooting first, then known limitations, then common questions. Everything
 
 **An `.xls` file is refused**
 
-Legacy `.xls` workbooks from Excel 97 to 2003 are read, so a refusal has one of four causes, and the `InvalidDataException` message says which. The file is password-protected, which is not supported; the file is in the Excel 5.0/95 format (BIFF5), which is not supported either; the file is damaged; or it is not a workbook at all, as with an HTML or tab-separated export that was given the `.xls` extension. In each case ask users to save the file as `.xlsx` or `.csv`. See [Read an Excel file](guides.md#read-an-excel-file).
+Legacy `.xls` workbooks from Excel 97 to 2003 are read, and a tab-separated or CSV export given the `.xls` extension is read as text, so a refusal has one of four causes, and the `InvalidDataException` message says which. The file is password-protected, which is not supported; the file is in the Excel 5.0/95 format (BIFF5), which is not supported either; the file is damaged; or it is an HTML or XML export (a web page table, the Excel 2003 XML format) given the `.xls` extension. In each case ask users to save the file as `.xlsx` or `.csv`. See [Read an Excel file](guides.md#read-an-excel-file).
 
 **A required column is reported as missing but the file has it**
 

@@ -113,6 +113,33 @@ public sealed class XlsImportTests : BunitContext
         Assert.False(importer.FileLoaded);
     }
 
+    [Theory]
+    [InlineData("Product\tPrice\tSince\r\nCafé crème\t1234,5\t01/01/2025\r\n")]
+    [InlineData("\uFEFFProduct;Price;Since\nCafé crème;1234,5;01/01/2025\n")]
+    public async Task LoadFileAsync_reads_a_text_export_named_xls_as_delimited_text(string text)
+    {
+        var importer = new SpreadsheetImporter(PriceSchema());
+
+        await importer.LoadFileAsync(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text)), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(importer.AllRows);
+        Assert.Equal("Café crème", row.Data["product"]);
+        Assert.Equal("export.xls", importer.FileName);
+    }
+
+    [Fact]
+    public async Task LoadFileAsync_reads_a_Latin1_text_export_named_xls_and_refuses_binary_or_markup()
+    {
+        var importer = new SpreadsheetImporter(PriceSchema());
+
+        await importer.LoadFileAsync(new MemoryStream(System.Text.Encoding.Latin1.GetBytes("Product\tPrice\nCafé\t2\n")), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken);
+        Assert.Equal("Café", Assert.Single(importer.AllRows).Data["product"]);
+
+        var xml = await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream("  <?xml version=\"1.0\"?><Workbook/>"u8.ToArray()), "export.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken));
+        Assert.Contains("HTML or XML", xml.Message);
+        await Assert.ThrowsAsync<InvalidDataException>(() => importer.LoadFileAsync(new MemoryStream([0x00, 0x13, 0x41, 0x42]), "broken.xls", cancellationToken: Xunit.TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task LoadFileAsync_still_applies_the_size_limit_to_an_xls()
     {

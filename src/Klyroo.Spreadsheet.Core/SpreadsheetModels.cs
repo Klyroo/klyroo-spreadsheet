@@ -666,8 +666,9 @@ public sealed class SpreadsheetImporter
     /// Reads a file and loads it: an <c>.xlsx</c> workbook through <see cref="SpreadsheetXlsxReader"/>, a legacy <c>.xls</c>
     /// workbook through <see cref="SpreadsheetXlsReader"/>, anything else as delimited text decoded as UTF-8 (with or without
     /// a byte order mark), or as Latin-1 when the bytes are not valid UTF-8. The content decides for the legacy format: a
-    /// file that starts with the OLE2 signature is read as <c>.xls</c> whatever its extension, and a zip archive named
-    /// <c>.xls</c> is read as <c>.xlsx</c>.
+    /// file that starts with the OLE2 signature is read as <c>.xls</c> whatever its extension, a zip archive named
+    /// <c>.xls</c> is read as <c>.xlsx</c>, and a text export named <c>.xls</c> (tab-separated or CSV, as many applications
+    /// produce) is read as delimited text. An HTML or XML export named <c>.xls</c> is refused.
     /// </summary>
     /// <param name="content">The file content. It is copied to memory, so a browser or network stream can be passed as it is.</param>
     /// <param name="fileName">The file name. Its extension selects the reader, except for a legacy workbook.</param>
@@ -675,7 +676,7 @@ public sealed class SpreadsheetImporter
     /// <param name="cancellationToken">Cancels the copy.</param>
     /// <returns>A task that completes when the file is loaded.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, is an <c>.xls</c> file that is not a readable workbook (damaged, encrypted, Excel 5.0/95, or text renamed), or is not a valid <c>.xlsx</c> workbook.</exception>
+    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, is an <c>.xls</c> file that is neither a readable workbook nor text (damaged, encrypted, Excel 5.0/95, or an HTML or XML export), or is not a valid <c>.xlsx</c> workbook.</exception>
     public async Task LoadFileAsync(Stream content, string fileName, long maxBytes = 10 * 1024 * 1024, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -702,13 +703,24 @@ public sealed class SpreadsheetImporter
         }
         if (extension == ".xls")
         {
-            // A zip archive named .xls is an .xlsx. Anything else is not a workbook: HTML or text exports are often named .xls.
+            // A zip archive named .xls is an .xlsx. Many applications also name their text exports .xls: tab-separated or CSV text is read
+            // like a .csv file, while an HTML or XML export (a web page table, the Excel 2003 XML format) is refused, since its rows are markup.
             if (head.Length >= 4 && head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4)
             {
                 LoadWorkbook(SpreadsheetXlsxReader.Read(buffer, fileName));
                 return;
             }
-            throw new InvalidDataException("The file is not a valid .xls workbook. If it is a text or HTML export renamed .xls, save it as .xlsx or .csv.");
+            var exported = DecodeText(buffer.ToArray());
+            if (exported.AsSpan().TrimStart(['\uFEFF', ' ', '\t', '\r', '\n']).StartsWith("<"))
+            {
+                throw new InvalidDataException("The .xls file is an HTML or XML export, not a workbook. Save it as .xlsx or .csv.");
+            }
+            if (!IsPlainText(exported))
+            {
+                throw new InvalidDataException("The file is not a valid .xls workbook. Save it as .xlsx or .csv.");
+            }
+            LoadText(exported, fileName);
+            return;
         }
         if (extension == ".xlsx")
         {
@@ -716,6 +728,16 @@ public sealed class SpreadsheetImporter
             return;
         }
         LoadText(DecodeText(buffer.ToArray()), fileName);
+    }
+
+    // Text has no control characters other than tab, line breaks and form feed: anything else is a damaged or unknown binary file.
+    private static bool IsPlainText(string text)
+    {
+        foreach (var c in text)
+        {
+            if (char.IsControl(c) && c is not ('\t' or '\r' or '\n' or '\f')) return false;
+        }
+        return true;
     }
 
     private static string DecodeText(byte[] bytes)
