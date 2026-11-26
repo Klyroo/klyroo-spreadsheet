@@ -117,7 +117,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
         Assert.Equal(2, importer.ImportableRows.Count);
         Assert.Single(importer.DiscardedRows);
 
-        await importer.SubmitAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
         Assert.Equal(["VIP"], createdOptions);
         Assert.Equal(2, importer.ImportedCount);
     }
@@ -184,7 +184,7 @@ public sealed class SpreadsheetEdgeCaseAndUiTests : BunitContext
 
         var importer = new SpreadsheetImporter(schema);
         importer.LoadText("Name\nAlice", "a.csv");
-        await importer.SubmitAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
 
         Assert.Equal(SpreadsheetSubmitStatus.Error, importer.SubmitStatus);
         Assert.Equal("Database unavailable", importer.SubmitError);

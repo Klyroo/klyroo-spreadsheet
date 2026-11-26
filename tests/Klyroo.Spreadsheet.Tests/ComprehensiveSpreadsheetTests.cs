@@ -82,12 +82,12 @@ public sealed class ComprehensiveSpreadsheetTests
         Assert.Equal(SpreadsheetRowMode.Update, importer.AllRows[2].Mode);
 
         // Submit -> row 1 rejected by server -> retry rejected batch
-        await importer.SubmitAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
         Assert.Equal(1, importer.RejectedCount);
         Assert.Equal(2, importer.ImportedCount);
 
         rejectRow1 = false;
-        await importer.RetryRejectedAsync();
+        await importer.RetryRejectedAsync(Xunit.TestContext.Current.CancellationToken);
         Assert.Equal(0, importer.RejectedCount);
         // A running total: 2 rows from the submit plus the 1 the retry got accepted.
         Assert.Equal(3, importer.ImportedCount);

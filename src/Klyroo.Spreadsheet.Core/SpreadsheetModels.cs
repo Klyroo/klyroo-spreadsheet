@@ -165,8 +165,10 @@ public enum SpreadsheetSubmitStatus
     Running,
     /// <summary>The last submit finished. Rows may still have been rejected, see <see cref="SpreadsheetImporter.RejectedCount"/>.</summary>
     Done,
-    /// <summary>The submit callback threw. <see cref="SpreadsheetImporter.SubmitError"/> holds the message.</summary>
+    /// <summary>The submit callback threw. <see cref="SpreadsheetImporter.SubmitError"/> holds the message. The rows accepted before the failure stay accepted, and <see cref="SpreadsheetImporter.SubmitAsync"/> resumes with the rest.</summary>
     Error,
+    /// <summary>The submit was cancelled, through <see cref="SpreadsheetImporter.CancelSubmit"/> or the token given to <see cref="SpreadsheetImporter.SubmitAsync"/>. The rows accepted so far stay accepted, and <see cref="SpreadsheetImporter.SubmitAsync"/> resumes with the rest.</summary>
+    Cancelled,
 }
 
 /// <summary>An allowed value of a <see cref="SpreadsheetColumnKind.Select"/> column.</summary>
@@ -330,6 +332,8 @@ public sealed class SpreadsheetSchema
     public int BatchSize { get; init; }
     /// <summary>Receives each batch of importable rows and returns the rows the server refused, or <see langword="null"/> or an empty list when all were accepted. If it throws, the submit stops with <see cref="SpreadsheetSubmitStatus.Error"/>.</summary>
     public Func<IReadOnlyList<SpreadsheetRow>, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmit { get; init; }
+    /// <summary>The cancellable form of <see cref="OnSubmit"/>: it also receives a <see cref="CancellationToken"/> that is cancelled by <see cref="SpreadsheetImporter.CancelSubmit"/> (the Cancel button of the component) or by the token passed to <see cref="SpreadsheetImporter.SubmitAsync"/>. A batch that throws <see cref="OperationCanceledException"/> counts as not accepted, so make the call safe to repeat. When both are set, this one is used.</summary>
+    public Func<IReadOnlyList<SpreadsheetRow>, CancellationToken, Task<IReadOnlyList<SpreadsheetRejectedRow>?>>? OnSubmitAsync { get; init; }
 }
 
 /// <summary>A row that <see cref="SpreadsheetSchema.OnSubmit"/> refused. It comes back as an error issue with code <c>server</c> on that row.</summary>
@@ -619,8 +623,8 @@ public sealed partial class SpreadsheetImporter
     public int SubmitDone { get; private set; }
     /// <summary>How many rows the current or last submit sends.</summary>
     public int SubmitTotal { get; private set; }
-    /// <summary>The rows accepted since the last <see cref="SubmitAsync"/>: rows sent minus rows rejected, plus the rows each <see cref="RetryRejectedAsync"/> got accepted.</summary>
-    public int ImportedCount { get; private set; }
+    /// <summary>How many rows the host accepted so far, across the submit, its retries and its resumptions: <c>AcceptedRowIndexes.Count</c>. A retry adds the rows it got accepted and never counts a row twice.</summary>
+    public int ImportedCount => _accepted.Count;
     /// <summary>The number of rows the server refused in the last submit and that have not been fixed or retried.</summary>
     public int RejectedCount => _serverRejections.Count;
     /// <summary>The message of the exception thrown by the submit callback, or <see langword="null"/>.</summary>
@@ -750,8 +754,7 @@ public sealed partial class SpreadsheetImporter
         _manualDiscards.Clear();
         _selectedRows.Clear();
         InspectedRowIndex = null;
-        _serverRejections.Clear();
-        SubmitStatus = SpreadsheetSubmitStatus.Idle;
+        ResetSubmitState();
         ReviewPage = 0;
         DetectLayout();
         Recompute();
@@ -773,8 +776,7 @@ public sealed partial class SpreadsheetImporter
         CurrentStepKey = "file";
         _visitedSteps.Clear();
         _visitedSteps.Add("file");
-        _serverRejections.Clear();
-        SubmitStatus = SpreadsheetSubmitStatus.Idle;
+        ResetSubmitState();
         ReviewPage = 0;
         Recompute();
         Changed?.Invoke();
@@ -788,7 +790,7 @@ public sealed partial class SpreadsheetImporter
         _selectedSheetName = sheetName;
         _manualColumns.Clear();
         _manualDiscards.Clear();
-        _serverRejections.Clear();
+        ResetSubmitState();
         _headerRowIndex = BestHeaderRowForSheet(CurrentSheet!).RowIndex;
         ReviewPage = 0;
         Recompute();
@@ -803,7 +805,7 @@ public sealed partial class SpreadsheetImporter
         _headerRowIndex = Math.Clamp(rowIndex, 0, Math.Max(0, CurrentSheet.Rows.Count - 1));
         _manualColumns.Clear();
         _manualDiscards.Clear();
-        _serverRejections.Clear();
+        ResetSubmitState();
         ReviewPage = 0;
         Recompute();
         Changed?.Invoke();

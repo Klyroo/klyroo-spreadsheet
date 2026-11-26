@@ -123,14 +123,28 @@
                             Continue
                         </button>
                     }
+                    else if (Importer.SubmitStatus == SpreadsheetSubmitStatus.Running)
+                    {
+                        <button type="button"
+                                class="inline-flex h-9 items-center rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-3.5 text-xs font-semibold text-(--klyroo-text) hover:bg-(--klyroo-bg-muted)"
+                                data-slot="spreadsheet-cancel-button"
+                                @onclick="Importer.CancelSubmit">
+                            Cancel
+                        </button>
+                    }
                     else if (Importer.SubmitStatus != SpreadsheetSubmitStatus.Done)
                     {
                         <button type="button"
-                                disabled="@(!Importer.CanSubmit || Importer.SubmitStatus == SpreadsheetSubmitStatus.Running)"
+                                disabled="@(!Importer.CanSubmit)"
                                 class="inline-flex h-9 items-center rounded-(--klyroo-radius) bg-(--klyroo-primary) px-4 text-xs font-semibold text-(--klyroo-primary-contrast) hover:opacity-90 disabled:opacity-40"
                                 data-slot="spreadsheet-submit-button"
                                 @onclick="@(() => Importer.SubmitAsync())">
-                            @($"Import {Importer.ImportableRows.Count} rows")
+                            @(Importer.SubmitStatus switch
+                            {
+                                SpreadsheetSubmitStatus.Error => "Try again",
+                                SpreadsheetSubmitStatus.Cancelled => "Resume the import",
+                                _ => $"Import {Importer.PendingRows.Count} rows",
+                            })
                         </button>
                     }
                     else
@@ -779,9 +793,26 @@
             {
                 <div class="flex flex-col gap-3 rounded-(--klyroo-radius) border border-(--klyroo-border) p-4" data-slot="spreadsheet-progress">
                     <div class="flex items-center justify-between text-xs font-semibold">
-                        <span>@(Importer.SubmitStatus == SpreadsheetSubmitStatus.Running ? "Importing…" : Importer.SubmitStatus == SpreadsheetSubmitStatus.Done ? $"{Importer.ImportedCount} rows imported" : "The import failed")</span>
+                        <span data-slot="spreadsheet-progress-label">@(Importer.SubmitStatus switch
+                        {
+                            SpreadsheetSubmitStatus.Running => "Importing…",
+                            SpreadsheetSubmitStatus.Done => $"{Importer.ImportedCount} rows imported",
+                            SpreadsheetSubmitStatus.Cancelled => "The import was cancelled",
+                            _ => "The import failed",
+                        })</span>
                         <span class="tabular-nums text-(--klyroo-text-muted)">@($"{Importer.SubmitDone} of {Importer.SubmitTotal}")</span>
                     </div>
+
+                    @if (Importer.SubmitStatus is SpreadsheetSubmitStatus.Error or SpreadsheetSubmitStatus.Cancelled)
+                    {
+                        <p class="m-0 text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-submit-resume">
+                            @($"{Importer.ImportedCount} rows are already imported and will not be sent again.")
+                            @if (Importer.SubmitError is not null)
+                            {
+                                <span class="block font-medium text-(--klyroo-error-text)" role="alert" data-slot="spreadsheet-submit-error">@Importer.SubmitError</span>
+                            }
+                        </p>
+                    }
 
                     @if (Importer.RejectedCount > 0)
                     {

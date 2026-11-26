@@ -280,11 +280,42 @@ await importer.RetryRejectedAsync();
 Console.WriteLine($"{importer.ImportedCount} imported, {importer.RejectedCount} rejected"); // 2 imported, 0 rejected
 ```
 
-A refused row comes back as an error issue with code `server` on that row, so it appears under the Invalid tab of the review. `RetryRejectedAsync` sends those rows again as they are, and it reports only what that retry sent: `ImportedCount` is `1` again, not `2`. Keep your own running total if you need one.
+A refused row comes back as an error issue with code `server` on that row, so it appears under the Invalid tab of the review. `RetryRejectedAsync` sends those rows again as they are. `ImportedCount` is the number of rows the host accepted so far (`AcceptedRowIndexes.Count`), so it grows from `1` to `2` here and never counts a row twice.
 
-Editing a cell of a refused row clears its rejection, which removes the row from the retry set, so `RetryRejectedAsync` no longer sends it. The edited row is importable again, but nothing tracks that it was never saved. To resend corrected rows, save them from your own code, or load a file that holds only those rows.
+Editing a cell of a refused row clears its rejection, which removes the row from the retry set. The edited row is importable again and is not accepted, so the next `SubmitAsync` sends it, and only it.
 
-If `OnSubmit` throws, the importer catches it, sets `SubmitStatus` to `Error` and puts the message in `SubmitError`. Batches already sent are not undone, and nothing records which they were, so make the callback idempotent, or send everything in one batch inside a transaction of your own.
+### Resume after a failure, and cancel
+
+The importer records each batch as soon as your callback answers: the rows it did not refuse become `AcceptedRowIndexes`. If a later batch throws, `SubmitStatus` is `Error`, `SubmitError` holds the message, and calling `SubmitAsync` again sends only `PendingRows` (the importable rows not accepted yet), so a retry never sends an accepted batch twice:
+
+```csharp
+var apiDown = true;
+var schema = new SpreadsheetSchema
+{
+    BatchSize = 2,
+    Columns = [new SpreadsheetColumnSchema { Key = "name" }],
+    OnSubmitAsync = async (rows, cancellationToken) =>
+    {
+        await Task.Delay(1, cancellationToken); // call your API here, passing the token
+        if (apiDown && rows[0].Index == 4) throw new HttpRequestException("API unavailable");
+        return null;
+    },
+};
+
+var importer = new SpreadsheetImporter(schema);
+importer.LoadText("Name\nA\nB\nC\nD\nE\nF", "names.csv");
+
+await importer.SubmitAsync();                    // the third batch throws
+Console.WriteLine(importer.SubmitStatus);        // Error
+Console.WriteLine(importer.ImportedCount);       // 4: two batches were accepted
+apiDown = false;
+await importer.SubmitAsync();                    // sends rows E and F only
+Console.WriteLine(importer.ImportedCount);       // 6
+```
+
+`OnSubmitAsync` is the cancellable form of `OnSubmit`: it also receives a `CancellationToken`, which `importer.CancelSubmit()` cancels (the Cancel button of the component calls it while a submit runs), as does the token you pass to `SubmitAsync(cancellationToken)`. A cancelled submit ends in `SpreadsheetSubmitStatus.Cancelled` without an error, keeps the accepted rows, and `SubmitAsync` resumes it. The batch in flight when you cancel counts as not accepted, since the importer cannot know whether your server finished it, so make the call safe to repeat (an upsert, or an idempotency key built from the row). When both callbacks are set, `OnSubmitAsync` is used. `ResetSubmit()` forgets what was accepted so the next submit sends every row again, and loading a file or choosing another sheet or header row does it for you.
+
+An exception your callback throws is caught and reported in `SubmitError`. Batches already accepted are not undone.
 
 ## Read an Excel file
 

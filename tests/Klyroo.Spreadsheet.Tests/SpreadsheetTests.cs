@@ -166,7 +166,7 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.Equal("submit", importer.CurrentStepKey);
 
         // Run submit: GoodRow succeeds, BadRow is rejected by server on attempt 1
-        await cut.InvokeAsync(() => importer.SubmitAsync());
+        await cut.InvokeAsync(() => importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken));
         cut.Render();
         Assert.Equal(SpreadsheetSubmitStatus.Done, importer.SubmitStatus);
         Assert.Equal(1, importer.ImportedCount);
@@ -174,7 +174,7 @@ public sealed class SpreadsheetTests : BunitContext
         Assert.NotNull(cut.Find("[data-slot=spreadsheet-rejected-box]"));
 
         // Retry rejected rows -> attempt > 1 succeeds
-        await cut.InvokeAsync(() => importer.RetryRejectedAsync());
+        await cut.InvokeAsync(() => importer.RetryRejectedAsync(Xunit.TestContext.Current.CancellationToken));
         cut.Render();
         Assert.Equal(0, importer.RejectedCount);
         Assert.Equal(2, importer.ImportedCount);

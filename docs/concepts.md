@@ -57,7 +57,7 @@ The rows are derived from three inputs: the loaded sheet, the schema, and the us
 
 ## Submit
 
-`SubmitAsync` sends the importable rows to `OnSubmit` in batches and collects the rows you reject. Rejected rows get an error issue with code `server` and stay in the importer, so the review can show them. `SubmitStatus` moves through `Idle`, `Running`, `Done` or `Error`. An exception from your callback sets `Error` and `SubmitError`. A normal run ends in `Done` even when some rows were rejected: check `RejectedCount`.
+`SubmitAsync` sends the importable rows that were not accepted yet to `OnSubmitAsync` (or `OnSubmit`) in batches and collects the rows you reject. Rejected rows get an error issue with code `server` and stay in the importer, so the review can show them. The importer records what each batch got accepted as soon as your callback answers, so a failure or a cancellation in the middle loses nothing: `SubmitAsync` again sends only the rest. `SubmitStatus` moves through `Idle`, `Running`, and `Done`, `Error` or `Cancelled`. An exception from your callback sets `Error` and `SubmitError`. A normal run ends in `Done` even when some rows were rejected: check `RejectedCount`.
 
 ## Render modes and threading
 

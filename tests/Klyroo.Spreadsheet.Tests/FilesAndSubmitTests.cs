@@ -88,7 +88,7 @@ public sealed class FilesAndSubmitTests
         var sent = 0;
         var importer = new SpreadsheetImporter(PriceSchema(onSubmit: rows => { sent += rows.Count; return Task.FromResult<IReadOnlyList<SpreadsheetRejectedRow>?>(null); }));
 
-        await importer.SubmitAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
 
         Assert.Equal(0, sent);
         Assert.Equal(SpreadsheetSubmitStatus.Idle, importer.SubmitStatus);
@@ -106,10 +106,10 @@ public sealed class FilesAndSubmitTests
         }));
         importer.LoadText("Product;Price\nA;1\nB;2\nC;3", "p.csv");
 
-        await importer.SubmitAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
         Assert.Equal(2, importer.ImportedCount);
 
-        await importer.RetryRejectedAsync();
+        await importer.RetryRejectedAsync(Xunit.TestContext.Current.CancellationToken);
         Assert.Equal(3, importer.ImportedCount);
     }
 
@@ -140,8 +140,8 @@ public sealed class FilesAndSubmitTests
         importer.LoadText("Name;Level\nAda;C2\nBob;C2", "people.csv");
         importer.AnswerValue("level", "C2", new SpreadsheetValueAnswer(SpreadsheetValueAnswerAction.Create));
 
-        await importer.SubmitAsync();
-        await importer.RetryRejectedAsync();
+        await importer.SubmitAsync(Xunit.TestContext.Current.CancellationToken);
+        await importer.RetryRejectedAsync(Xunit.TestContext.Current.CancellationToken);
 
         Assert.Equal(1, created);
         Assert.All(sentLevels, v => Assert.Equal("lvl-c2", v));
