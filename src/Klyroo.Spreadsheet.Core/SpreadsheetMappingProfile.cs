@@ -18,6 +18,7 @@ public sealed record SpreadsheetMappingProfile
     private static readonly IReadOnlyDictionary<string, string> NoColumns = new Dictionary<string, string>();
     private static readonly IReadOnlyDictionary<string, SpreadsheetValueAnswer> NoAnswers = new Dictionary<string, SpreadsheetValueAnswer>();
     private readonly IReadOnlyDictionary<string, string>? _columns;
+    private readonly IReadOnlyDictionary<string, string>? _repeatedColumns;
     private readonly IReadOnlyList<string>? _ignoredColumns;
     private readonly IReadOnlyDictionary<string, SpreadsheetValueAnswer>? _valueAnswers;
 
@@ -30,11 +31,18 @@ public sealed record SpreadsheetMappingProfile
     /// <summary>The <see cref="SpreadsheetSchema.Key"/> the profile was made for. A profile with a key is applied only to a schema with the same key. <see langword="null"/> applies to any schema.</summary>
     public string? SchemaKey { get; init; }
 
-    /// <summary>The file headers and the column they were mapped to: the header after <see cref="SpreadsheetImporter.NormalizeText"/> (lower case, no accents, no trailing <c>*</c>) mapped to the <see cref="SpreadsheetColumnSchema.Key"/>.</summary>
+    /// <summary>The file headers and the column they were mapped to: the header after <see cref="SpreadsheetImporter.NormalizeText"/> (lower case, no accents, no trailing <c>*</c>) mapped to the <see cref="SpreadsheetColumnSchema.Key"/>. When a header appears several times in the file, this holds its first occurrence and <see cref="RepeatedColumns"/> the others.</summary>
     public IReadOnlyDictionary<string, string> Columns
     {
         get => _columns ?? NoColumns;
         init => _columns = value;
+    }
+
+    /// <summary>The columns mapped to the second, third and later occurrence of a header that repeats in the file (two <c>Date</c> columns, for example): <c>"2:date"</c> is the second column headed <c>date</c>, mapped to a column key. It keeps a re-applied profile from sending both occurrences to the same column.</summary>
+    public IReadOnlyDictionary<string, string> RepeatedColumns
+    {
+        get => _repeatedColumns ?? NoColumns;
+        init => _repeatedColumns = value;
     }
 
     /// <summary>The keys of the columns the user declared absent from the file with <see cref="SpreadsheetImporter.IgnoreColumn"/>.</summary>

@@ -9,6 +9,17 @@ public sealed partial class SpreadsheetImporter
     private readonly HashSet<string> _lookedUpKeys = new(StringComparer.Ordinal);
     private readonly List<IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>> _lookedUpRecords = [];
     private bool _asyncDirty = true;
+    private int _asyncStamp;
+
+    // Anything that makes a row unchecked calls this. A run clears the dirty flag only when the stamp did not move while it ran.
+    private void MarkAsyncDirty()
+    {
+        _asyncDirty = true;
+        _asyncStamp++;
+    }
+
+    // Whether a send must run the checks first: unlike NeedsAsyncValidation, a failed or cancelled run does not hide it, so a retry checks again.
+    private bool AsyncChecksPending => HasAsyncChecks && FileLoaded && _asyncDirty;
     private CancellationTokenSource? _validateCts;
 
     /// <summary>The state of the last <see cref="ValidateAsync"/> run (or of the check <see cref="SubmitAsync"/> ran before sending).</summary>
@@ -47,6 +58,7 @@ public sealed partial class SpreadsheetImporter
     private async Task ValidateCoreAsync(CancellationToken token, bool rethrow, CancellationTokenSource? owned = null)
     {
         _validateCts = owned;
+        var stamp = _asyncStamp;
         ValidationStatus = SpreadsheetValidationStatus.Running;
         ValidationError = null;
         Changed?.Invoke();
@@ -54,7 +66,8 @@ public sealed partial class SpreadsheetImporter
         {
             await LookupExistingAsync(token);
             await RunRowValidationAsync(token);
-            _asyncDirty = false;
+            // Rows changed while the run was in flight were not marked checked, so they stay for the next run.
+            if (stamp == _asyncStamp) _asyncDirty = false;
             ValidationStatus = SpreadsheetValidationStatus.Done;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -118,9 +131,14 @@ public sealed partial class SpreadsheetImporter
         {
             token.ThrowIfCancellationRequested();
             var batch = rows.Skip(offset).Take(batchSize).ToList();
+            var sent = batch.Where(r => r.Index < _parsed.Count).ToDictionary(r => r.Index, r => _parsed[r.Index]);
             var issues = await validate(batch, token);
 
-            var batchIndexes = batch.Select(r => r.Index).ToHashSet();
+            // Apply the answers only to rows that are the same parsed row as when the batch left: an edit (or a new read of the file)
+            // made the answer stale, and that row stays unchecked.
+            var batchIndexes = batch
+                .Where(r => r.Index < _parsed.Count && ReferenceEquals(_parsed[r.Index], sent[r.Index]))
+                .Select(r => r.Index).ToHashSet();
             foreach (var index in batchIndexes)
             {
                 _asyncChecked.Add(index);

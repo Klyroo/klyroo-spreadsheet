@@ -88,6 +88,7 @@ public sealed partial class SpreadsheetImporter
             if (_defaultMaxRows == value) return;
             _defaultMaxRows = value;
             if (!FileLoaded) return;
+            MarkAsyncDirty();                 // rows the new limit takes in were never checked
             RefinalizeAll();
             Changed?.Invoke();
         }
@@ -114,7 +115,7 @@ public sealed partial class SpreadsheetImporter
         _disabledRules.Clear();
         _asyncChecked.Clear();
         _asyncIssues.Clear();
-        _asyncDirty = true;
+        MarkAsyncDirty();
 
         var sheet = CurrentSheet;
         if (sheet is null || sheet.Rows.Count == 0 || _headerRowIndex >= sheet.Rows.Count)
@@ -391,7 +392,15 @@ public sealed partial class SpreadsheetImporter
                 for (var ruleIndex = 0; ruleIndex < col.Rules.Count; ruleIndex++)
                 {
                     var rule = col.Rules[ruleIndex];
-                    if (_ruleTimeouts.TryGetValue((col.Key, ruleIndex), out var seen) && Schema.RuleTimeoutLimit > 0 && seen >= Schema.RuleTimeoutLimit) continue;
+                    if (_ruleTimeouts.TryGetValue((col.Key, ruleIndex), out var seen) && Schema.RuleTimeoutLimit > 0 && seen >= Schema.RuleTimeoutLimit)
+                    {
+                        // A stopped rule no longer runs its regex, but its values are not waved through: they get the same issue a timeout gets,
+                        // so a hostile file cannot make the values after the limit importable.
+                        var skipped = new SpreadsheetRowIssue(col.Key, "pattern", rule.Level, "The format could not be checked in time", ["timeout"]);
+                        rowIssues.Add(skipped);
+                        fieldIssue ??= skipped;
+                        continue;
+                    }
                     var passed = RunRule(rule, parsedVal, out var timedOut);
                     if (timedOut)
                     {
@@ -563,7 +572,7 @@ public sealed partial class SpreadsheetImporter
             _parsed[rIdx] = fresh;
             _asyncChecked.Remove(rIdx);
             _asyncIssues.Remove(rIdx);
-            _asyncDirty = true;
+            MarkAsyncDirty();
             touched.Add(rIdx);
             unknownChanged |= !SameUnknown(old.Unknown, fresh.Unknown);
 

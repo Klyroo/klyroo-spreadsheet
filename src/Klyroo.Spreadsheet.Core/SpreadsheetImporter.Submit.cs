@@ -37,7 +37,7 @@ public sealed partial class SpreadsheetImporter
     /// <returns>A task that completes when the retry has finished, failed or been cancelled.</returns>
     public async Task RetryRejectedAsync(CancellationToken cancellationToken = default)
     {
-        if (SubmitStatus == SpreadsheetSubmitStatus.Running || _serverRejections.Count == 0) return;
+        if (SubmitStatus == SpreadsheetSubmitStatus.Running || _serverRejections.Count == 0 || !CanSend) return;
         var rejectedIndexes = _serverRejections.Keys.ToHashSet();
         _serverRejections.Clear();
         RefinalizeRows(rejectedIndexes);
@@ -87,7 +87,7 @@ public sealed partial class SpreadsheetImporter
             await CreateAnsweredOptionsAsync(token);
 
             // Step 2: the async checks, so the rows sent are the ones that passed them.
-            if (NeedsAsyncValidation)
+            if (AsyncChecksPending)
             {
                 await ValidateCoreAsync(token, rethrow: true);
             }
@@ -112,13 +112,15 @@ public sealed partial class SpreadsheetImporter
                     rejected = await submit(batch);
                 }
 
-                var rejectedIndexes = rejected is { Count: > 0 } ? rejected.Select(r => r.RowIndex).ToHashSet() : [];
+                var batchIndexes = batch.Select(r => r.Index).ToHashSet();
+                var rejectedIndexes = rejected is { Count: > 0 } ? rejected.Select(r => r.RowIndex).Where(batchIndexes.Contains).ToHashSet() : [];
                 foreach (var row in batch)
                 {
                     if (!rejectedIndexes.Contains(row.Index)) _accepted.Add(row.Index);
                 }
                 foreach (var rej in rejected ?? [])
                 {
+                    if (!batchIndexes.Contains(rej.RowIndex)) continue;     // a refusal for a row that was not in this batch is ignored
                     if (!_serverRejections.TryGetValue(rej.RowIndex, out var list))
                     {
                         list = [];

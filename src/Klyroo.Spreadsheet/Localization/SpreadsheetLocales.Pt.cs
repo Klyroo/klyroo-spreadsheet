@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "Aviso",
         StatusBlocking = "Bloqueante",
         StatusDiscarded = "Excluída",
+        StatusImported = "Importada",
         NoRows = "Sem linhas para mostrar",
         DownloadInvalidRows = n => n == 1 ? "Transferir a linha inválida" : $"Transferir as {Grouped(n, ".")} linhas inválidas",
         DownloadFailed = message => $"Não foi possível transferir o ficheiro: {message}",

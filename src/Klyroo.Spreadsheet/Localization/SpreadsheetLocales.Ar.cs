@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "تحذير",
         StatusBlocking = "مانع",
         StatusDiscarded = "مستبعد",
+        StatusImported = "تم استيراده",
         NoRows = "لا توجد صفوف لعرضها",
         DownloadInvalidRows = n => $"تنزيل الصفوف غير الصالحة ({Grouped(n, ",")})",
         DownloadFailed = message => $"تعذر تنزيل الملف: {message}",

@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "Warnung",
         StatusBlocking = "Blockierend",
         StatusDiscarded = "Ausgelassen",
+        StatusImported = "Importiert",
         NoRows = "Keine Zeilen anzuzeigen",
         DownloadInvalidRows = n => n == 1 ? "Ungültige Zeile herunterladen" : $"{Grouped(n, ".")} ungültige Zeilen herunterladen",
         DownloadFailed = message => $"Die Datei konnte nicht heruntergeladen werden: {message}",

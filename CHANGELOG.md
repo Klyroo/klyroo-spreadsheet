@@ -33,6 +33,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
+- `CanSubmit` also requires a pending row and no running check. The add of `IsRowAccepted`, `MappingLocked` and the row and mapping locks make `EditCell`, `RevertCell`, `DiscardRows`, `RestoreRows`, `AssignColumn`, `IgnoreColumn`, `ResetColumn`, `AnswerValue`, `ClearAnswer`, `SetSheet`, `SetHeaderRow` and `ApplyMappingProfile` do nothing in those cases.
 - `SubmitAsync` no longer starts `ImportedCount` again from zero and resends every importable row: it resumes with the rows that were not accepted (a second call after a complete submit sends nothing; `ResetSubmit()` sends everything again). The rejections of the batches that finished are kept when a later batch throws. The old behavior was the bug: a retry after a failed batch sent the accepted batches again.
 - `SpreadsheetRule.Email` and `Pattern` take a `string? message` (default `null`, which keeps the English default text and lets the component translate it) instead of a default string.
 - `ImportableRows`, `InvalidRows`, `DiscardedRows` and `AllRows` are cached lists (a list you took earlier does not change afterwards). `VisibleReviewRows` is cached too.
@@ -41,6 +42,17 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- A retry after a failed or cancelled async check ran no check at all and sent unchecked rows. `SubmitAsync` now runs pending checks whatever the status of the last run.
+- `SubmitAsync` could start while `ValidateAsync` was running and send rows the validator was about to flag. `CanSubmit` is now `false` while a check runs, and the component disables Import.
+- A check that finished after the user edited a row (or after the file was read again) applied its answer to the new text and marked everything checked. Answers now land only on rows unchanged since the batch left, and the run clears the dirty state only when nothing changed during it.
+- Raising `DefaultMaxRows` or `MaxRows` did not mark the rows it takes in as unchecked, so they were never looked up or validated.
+- An accepted row could be edited, left out or re-mapped afterwards, and a row edited while its batch was in flight was recorded as accepted with data that was never sent. Accepted rows are final (`IsRowAccepted`, shown as Imported and read-only), rows cannot be edited while a submit runs, and `MappingLocked` freezes the mapping, the answers, the sheet and the header row once rows are accepted. `CanSubmit` is `false` with nothing pending, and the component no longer offers "Import 0 rows".
+- `RetryRejectedAsync` ignored `CanSubmit` conditions, and a refusal for a row outside the batch marked that row as rejected. Both fixed.
+- A saved mapping with a repeated header sent both occurrences to the first column. `SpreadsheetMappingProfile.RepeatedColumns` stores the later occurrences, and a stored profile with null keys or values, a `Map` answer outside the column's options, a `Create` answer without a create callback or an undefined action no longer throws or applies.
+- `ExportTemplateCsv` did not escape quotes, and neither export guarded formulas. Both now double quotes and prefix a cell or header that starts with `=`, `@`, a tab, a carriage return, or `+` or `-` followed by non-numeric text with an apostrophe (CSV injection).
+- Once a rule tripped the circuit breaker, the values after it were not checked and became importable. They now get the same "could not be checked in time" issue without running the regex.
+- The live region announced every batch and could say "0 of 0". Progress is announced at most every 3 seconds and the end at once, and "Importing…" is said until the number of rows is known.
+- French `IssueValueSkipped` reads "La valeur « X » est configurée pour exclure ses lignes".
 - `SpreadsheetRule.Pattern` builds its regular expression with a match timeout (`matchTimeout`, 100 ms by default, `SpreadsheetRule.DefaultPatternTimeout`). A cell that makes a match time out, or a custom rule that throws `RegexMatchTimeoutException`, gets a `pattern` issue instead of hanging or aborting the import.
 
 - `ImportedCount` is a running total: a retry adds the rows it got accepted instead of replacing the count.

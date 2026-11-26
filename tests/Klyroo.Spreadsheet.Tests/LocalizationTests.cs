@@ -389,8 +389,14 @@ public sealed class LocalizationTests : BunitContext
         importer.NextStep();
         importer.NextStep();
         var cut = Render(KlyLocales.En, importer);
+        var clock = new StepClock();
+        cut.FindComponent<KlySpreadsheetImport>().Instance.Clock = clock;
 
         var submit = cut.InvokeAsync(() => importer.SubmitAsync(Token));
+        cut.WaitForAssertion(() => Assert.Equal("Importing: 0 of 3 rows", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim()));
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        importer.SetReviewSearch("");                             // any change renders again
         cut.WaitForAssertion(() => Assert.Equal("Importing: 1 of 3 rows", cut.Find("[data-slot=spreadsheet-live]").TextContent.Trim()));
 
         gate.SetResult();
@@ -441,5 +447,12 @@ public sealed class LocalizationTests : BunitContext
         var css = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Klyroo.Spreadsheet", "wwwroot", "klyroo-spreadsheet.css"));
 
         Assert.Contains("[data-slot=\"spreadsheet-live\"].sr-only", css, StringComparison.Ordinal);
+    }
+
+    private sealed class StepClock : TimeProvider
+    {
+        private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        public void Advance(TimeSpan by) => _now += by;
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 }

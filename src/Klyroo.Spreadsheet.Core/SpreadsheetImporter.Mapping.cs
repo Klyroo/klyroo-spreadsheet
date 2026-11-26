@@ -17,7 +17,7 @@ public sealed partial class SpreadsheetImporter
         {
             _savedMapping = value;
             SavedMappingApplied = false;
-            if (value is null || !FileLoaded) return;
+            if (value is null || !FileLoaded || MappingLocked) return;
             if (ApplyProfile(value, Headers))
             {
                 SavedMappingApplied = true;
@@ -35,16 +35,21 @@ public sealed partial class SpreadsheetImporter
     public SpreadsheetMappingProfile GetMappingProfile()
     {
         var columns = new Dictionary<string, string>(StringComparer.Ordinal);
+        var repeated = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var field in _fields)
         {
-            if (!string.IsNullOrEmpty(field.Column.From) || field.HeaderIndex is null || field.HeaderText is null) continue;
+            if (!string.IsNullOrEmpty(field.Column.From) || field.HeaderIndex is not { } index || field.HeaderText is null) continue;
             var header = NormalizeText(field.HeaderText);
-            if (header.Length > 0) columns.TryAdd(header, field.Column.Key);
+            if (header.Length == 0) continue;
+            var occurrence = OccurrenceOf(Headers, index);
+            if (occurrence == 1) columns.TryAdd(header, field.Column.Key);
+            else repeated.TryAdd($"{occurrence}:{header}", field.Column.Key);
         }
         return new SpreadsheetMappingProfile
         {
             SchemaKey = Schema.Key,
             Columns = columns,
+            RepeatedColumns = repeated,
             IgnoredColumns = _manualColumns.Where(kv => kv.Value is null).Select(kv => kv.Key).Order(StringComparer.Ordinal).ToList(),
             ValueAnswers = new Dictionary<string, SpreadsheetValueAnswer>(_valueAnswers, StringComparer.Ordinal),
         };
@@ -67,7 +72,7 @@ public sealed partial class SpreadsheetImporter
     public SpreadsheetMappingApplyResult ApplyMappingProfile(SpreadsheetMappingProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        if (!FileLoaded || !ProfileUsable(profile)) return new SpreadsheetMappingApplyResult(0, 0, 0);
+        if (!FileLoaded || MappingLocked || !ProfileUsable(profile)) return new SpreadsheetMappingApplyResult(0, 0, 0);
         var result = ApplyProfileCore(profile, Headers);
         if (result.Applied)
         {
@@ -85,8 +90,40 @@ public sealed partial class SpreadsheetImporter
     private bool ProfileMatches(SpreadsheetMappingProfile profile, IReadOnlyList<string> headers)
     {
         if (!ProfileUsable(profile) || profile.Columns.Count == 0) return false;
-        var present = headers.Select(NormalizeText).Where(h => h.Length > 0).ToHashSet(StringComparer.Ordinal);
-        return profile.Columns.Keys.All(present.Contains);
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var header in headers.Select(NormalizeText).Where(h => h.Length > 0))
+        {
+            counts[header] = counts.GetValueOrDefault(header) + 1;
+        }
+        if (!profile.Columns.Keys.All(counts.ContainsKey)) return false;
+        foreach (var key in profile.RepeatedColumns.Keys)
+        {
+            if (!TrySplitRepeated(key, out var occurrence, out var header) || counts.GetValueOrDefault(header) < occurrence) return false;
+        }
+        return true;
+    }
+
+    // The 1-based position of a header among the headers with the same normalized text.
+    private static int OccurrenceOf(IReadOnlyList<string> headers, int index)
+    {
+        var text = NormalizeText(headers[index]);
+        var occurrence = 1;
+        for (var i = 0; i < index; i++)
+        {
+            if (NormalizeText(headers[i]) == text) occurrence++;
+        }
+        return occurrence;
+    }
+
+    // "2:date" is the second column headed "date".
+    private static bool TrySplitRepeated(string key, out int occurrence, out string header)
+    {
+        occurrence = 0;
+        header = "";
+        var colon = key.IndexOf(':', StringComparison.Ordinal);
+        if (colon <= 0 || !int.TryParse(key.AsSpan(0, colon), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out occurrence) || occurrence < 2) return false;
+        header = key[(colon + 1)..];
+        return header.Length > 0;
     }
 
     // Before the first read of a freshly chosen layout: map by the saved profile when its headers match.
@@ -106,32 +143,48 @@ public sealed partial class SpreadsheetImporter
         return true;
     }
 
+    // A profile comes from storage, so it is untrusted: null keys and values, unknown columns, answers that do not fit the column and undefined enum values are skipped.
     private SpreadsheetMappingApplyResult ApplyProfileCore(SpreadsheetMappingProfile profile, IReadOnlyList<string> headers)
     {
         var columnsByKey = Schema.Columns.Where(c => string.IsNullOrEmpty(c.From)).ToDictionary(c => c.Key, StringComparer.Ordinal);
         var usedHeaders = new HashSet<int>();
         var mapped = 0;
-        foreach (var (normalizedHeader, key) in profile.Columns)
+
+        // Index of the nth header with a normalized text.
+        int? Find(string header, int occurrence)
         {
-            if (!columnsByKey.ContainsKey(key)) continue;
+            var seen = 0;
             for (var h = 0; h < headers.Count; h++)
             {
-                if (usedHeaders.Contains(h) || NormalizeText(headers[h]) != normalizedHeader) continue;
-                usedHeaders.Add(h);
-                foreach (var other in _manualColumns.Where(kv => kv.Value == h && kv.Key != key).Select(kv => kv.Key).ToList())
-                {
-                    _manualColumns.Remove(other);
-                }
-                _manualColumns[key] = h;
-                mapped++;
-                break;
+                if (NormalizeText(headers[h]) != header) continue;
+                if (++seen == occurrence) return h;
             }
+            return null;
+        }
+
+        void Map(string header, int occurrence, string? key)
+        {
+            if (string.IsNullOrEmpty(header) || string.IsNullOrEmpty(key) || !columnsByKey.ContainsKey(key)) return;
+            if (Find(header, occurrence) is not { } h || usedHeaders.Contains(h)) return;
+            usedHeaders.Add(h);
+            foreach (var other in _manualColumns.Where(kv => kv.Value == h && kv.Key != key).Select(kv => kv.Key).ToList())
+            {
+                _manualColumns.Remove(other);
+            }
+            _manualColumns[key] = h;
+            mapped++;
+        }
+
+        foreach (var (header, key) in profile.Columns) Map(header, 1, key);
+        foreach (var (repeatedKey, key) in profile.RepeatedColumns)
+        {
+            if (repeatedKey is not null && TrySplitRepeated(repeatedKey, out var occurrence, out var header)) Map(header, occurrence, key);
         }
 
         var ignored = 0;
         foreach (var key in profile.IgnoredColumns)
         {
-            if (!columnsByKey.ContainsKey(key) || profile.Columns.Values.Contains(key)) continue;
+            if (string.IsNullOrEmpty(key) || !columnsByKey.ContainsKey(key) || profile.Columns.Values.Contains(key) || profile.RepeatedColumns.Values.Contains(key)) continue;
             _manualColumns[key] = null;
             ignored++;
         }
@@ -139,11 +192,22 @@ public sealed partial class SpreadsheetImporter
         var answers = 0;
         foreach (var (id, answer) in profile.ValueAnswers)
         {
+            if (string.IsNullOrEmpty(id) || answer is null || !Enum.IsDefined(answer.Action)) continue;
             var separator = id.IndexOf("::", StringComparison.Ordinal);
-            if (separator <= 0 || !columnsByKey.ContainsKey(id[..separator]) || answer is null) continue;
+            if (separator <= 0 || !columnsByKey.TryGetValue(id[..separator], out var column)) continue;
+            if (!AnswerFits(column, answer)) continue;
             _valueAnswers[id] = answer;
             answers++;
         }
         return new SpreadsheetMappingApplyResult(mapped, ignored, answers);
     }
+
+    // A stored answer must make sense for the column: a Map answer names one of its options, and only a column that can create options accepts Create.
+    private static bool AnswerFits(SpreadsheetColumnSchema column, SpreadsheetValueAnswer answer) => answer.Action switch
+    {
+        SpreadsheetValueAnswerAction.Map => column.Kind == SpreadsheetColumnKind.Select
+            && answer.MappedValue is { } value && column.Options?.Any(o => o.Value == value) == true,
+        SpreadsheetValueAnswerAction.Create => column.OnCreateOption is not null || column.OnCreateOptionAsync is not null,
+        _ => true,
+    };
 }

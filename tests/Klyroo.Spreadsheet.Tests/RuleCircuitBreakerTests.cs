@@ -42,8 +42,9 @@ public sealed class RuleCircuitBreakerTests : BunitContext
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"Took {watch.Elapsed}");   // 300 x 50 ms would be 15 s
         var disabled = Assert.Single(importer.DisabledRules);
         Assert.Equal(new SpreadsheetDisabledRule("code", "pattern", 3), disabled);
-        Assert.Equal(3, importer.AllRows.Count(r => r.Issues.Any(i => i.Code == "pattern")));
-        Assert.Equal(297, importer.ImportableRows.Count);                                 // the rule no longer judges the rows after it stopped
+        // The values after the limit are not waved through: they get the same "could not be checked in time" issue, without running the regex.
+        Assert.Equal(300, importer.AllRows.Count(r => r.Issues.Any(i => i.Code == "pattern" && i.Args is ["timeout"])));
+        Assert.Empty(importer.ImportableRows);
     }
 
     [Fact]
@@ -53,7 +54,7 @@ public sealed class RuleCircuitBreakerTests : BunitContext
 
         var one = Importer(1, rule);
         one.LoadText(Csv(10), "codes.csv");
-        Assert.Equal(1, one.AllRows.Count(r => r.Issues.Count > 0));
+        Assert.Equal(10, one.AllRows.Count(r => r.Issues.Count > 0));
         Assert.Equal(1, Assert.Single(one.DisabledRules).Timeouts);
 
         var never = Importer(0, rule);
@@ -88,7 +89,7 @@ public sealed class RuleCircuitBreakerTests : BunitContext
 
         importer.LoadText(Csv(10), "c.csv");
         Assert.Equal(3, Assert.Single(importer.DisabledRules).Timeouts);
-        Assert.Equal(3, importer.AllRows.Count(r => r.Issues.Count > 0));
+        Assert.Equal(10, importer.AllRows.Count(r => r.Issues.Count > 0));
     }
 
     [Fact]
@@ -101,7 +102,8 @@ public sealed class RuleCircuitBreakerTests : BunitContext
         importer.EditCell(9, "code", Hostile + "?");
 
         Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(15));                        // no new timeout was paid
-        Assert.Empty(importer.AllRows[9].Issues);
+        Assert.Equal("pattern", Assert.Single(importer.AllRows[9].Issues).Code);            // and the edited value is still not waved through
+        Assert.False(importer.AllRows[9].Importable);
     }
 
     [Fact]

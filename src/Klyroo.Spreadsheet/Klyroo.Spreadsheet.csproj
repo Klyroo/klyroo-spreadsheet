@@ -14,6 +14,9 @@
     <ProjectReference Include="..\..\..\klyroo-ui\src\Klyroo.UI\Klyroo.UI.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Klyroo.Spreadsheet.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <SupportedPlatform Include="browser" />
     <SupportedPlatform Include="ios" />
     <SupportedPlatform Include="android" />

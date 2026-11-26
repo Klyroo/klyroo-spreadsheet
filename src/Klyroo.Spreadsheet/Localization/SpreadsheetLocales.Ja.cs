@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "警告",
         StatusBlocking = "ブロック",
         StatusDiscarded = "除外",
+        StatusImported = "インポート済み",
         NoRows = "表示する行がありません",
         DownloadInvalidRows = n => $"無効な{Grouped(n, ",")}行をダウンロード",
         DownloadFailed = message => $"ファイルをダウンロードできませんでした: {message}",

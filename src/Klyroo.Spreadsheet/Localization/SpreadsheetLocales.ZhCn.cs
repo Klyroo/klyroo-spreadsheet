@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "警告",
         StatusBlocking = "阻止",
         StatusDiscarded = "已排除",
+        StatusImported = "已导入",
         NoRows = "没有可显示的行",
         DownloadInvalidRows = n => $"下载 {Grouped(n, ",")} 个无效行",
         DownloadFailed = message => $"无法下载文件：{message}",

@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "Waarschuwing",
         StatusBlocking = "Blokkerend",
         StatusDiscarded = "Overgeslagen",
+        StatusImported = "Geïmporteerd",
         NoRows = "Geen rijen om te tonen",
         DownloadInvalidRows = n => n == 1 ? "Ongeldige rij downloaden" : $"{Grouped(n, ".")} ongeldige rijen downloaden",
         DownloadFailed = message => $"Het bestand kon niet worden gedownload: {message}",

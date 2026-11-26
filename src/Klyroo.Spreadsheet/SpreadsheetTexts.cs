@@ -283,6 +283,9 @@ public sealed record SpreadsheetTexts
     /// <summary>The status of a row left out of the import (<c>"Discarded"</c>).</summary>
     public string StatusDiscarded { get; init; } = "Discarded";
 
+    /// <summary>The status of a row the host accepted. It is final: the row can no longer be edited or left out (<c>"Imported"</c>).</summary>
+    public string StatusImported { get; init; } = "Imported";
+
     /// <summary>The text of a review table with no row to show (<c>"No rows to show"</c>).</summary>
     public string NoRows { get; init; } = "No rows to show";
 

@@ -134,7 +134,7 @@
                             @T.Cancel
                         </button>
                     }
-                    else if (Importer.SubmitStatus != SpreadsheetSubmitStatus.Done)
+                    else if (Importer.SubmitStatus != SpreadsheetSubmitStatus.Done && (Importer.PendingRows.Count > 0 || Importer.SubmitStatus != SpreadsheetSubmitStatus.Idle))
                     {
                         <button type="button"
                                 disabled="@(!Importer.CanSubmit)"
@@ -204,10 +204,11 @@
         get
         {
             var importer = Importer;
+            if (importer.SubmitStatus != SpreadsheetSubmitStatus.Running) _announcedAt = null;
             switch (importer.SubmitStatus)
             {
                 case SpreadsheetSubmitStatus.Running:
-                    return T.LiveImporting(importer.SubmitDone, importer.SubmitTotal);
+                    return RunningAnnouncement(importer);
                 case SpreadsheetSubmitStatus.Done:
                     return importer.RejectedCount > 0
                         ? $"{T.RowsImported(importer.ImportedCount)}. {T.RowsRefused(importer.RejectedCount)}."
@@ -221,6 +222,22 @@
             var counts = T.LiveReview(importer.ImportableRows.Count, importer.InvalidRows.Count, importer.DiscardedRows.Count);
             return importer.HasAsyncChecks && importer.ValidationStatus == SpreadsheetValidationStatus.Running ? $"{T.CheckingRows} {counts}" : counts;
         }
+    }
+
+    // Progress is announced at most every few seconds: a screen reader would otherwise be told about each batch. Before the first
+    // batch is known (nothing to send yet, or the checks still run) the message has no count, so it never says "0 of 0".
+    internal static readonly TimeSpan ProgressAnnouncementInterval = TimeSpan.FromSeconds(3);
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
+    private DateTimeOffset? _announcedAt;
+    private string _announced = "";
+
+    private string RunningAnnouncement(SpreadsheetImporter importer)
+    {
+        if (importer.SubmitTotal == 0) return T.Importing;
+        var now = Clock.GetUtcNow();
+        if (_announcedAt is { } at && now - at < ProgressAnnouncementInterval) return _announced;
+        _announcedAt = now;
+        return _announced = T.LiveImporting(importer.SubmitDone, importer.SubmitTotal);
     }
 
     private string RootClass =>
@@ -510,6 +527,7 @@
                                 <button type="button"
                                         class="font-semibold text-(--klyroo-primary-text) hover:underline"
                                         data-slot="spreadsheet-use-suggestion"
+                                        disabled="@Importer.MappingLocked"
                                         @onclick="@(() => Importer.AssignColumn(f.Column.Key, sug.HeaderIndex))">
                                     @T.UseSuggestion
                                 </button>
@@ -526,6 +544,7 @@
                                 class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                 value="@(f.HeaderIndex?.ToString() ?? "")"
                                 data-slot="spreadsheet-column-select"
+                                disabled="@Importer.MappingLocked"
                                 @onchange="@(e => OnColumnSelectChange(f.Column.Key, e.Value?.ToString()))">
                             <option value="">@T.NotInFile</option>
                             @for (var h = 0; h < Importer.Headers.Count; h++)
@@ -539,6 +558,7 @@
                             <button type="button"
                                     class="text-xs font-medium text-(--klyroo-primary-text) hover:underline"
                                     data-slot="spreadsheet-column-undo"
+                                    disabled="@Importer.MappingLocked"
                                     @onclick="@(() => Importer.ResetColumn(f.Column.Key))">
                                 @T.Undo
                             </button>
@@ -576,6 +596,7 @@
                             <select aria-label="@T.AnswerFor(q.RawValue)"
                                     class="h-8 rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) px-2.5 text-xs"
                                     data-slot="spreadsheet-value-select"
+                                    disabled="@Importer.MappingLocked"
                                     @onchange="@(e => OnValueAnswerChange(q, e.Value?.ToString()))">
                                 <option value="">@T.Choose</option>
                                 @foreach (var opt in q.Choices)
@@ -726,14 +747,16 @@
                             @foreach (var row in Importer.ReviewPageRows)
                             {
                                 var isDiscarded = row.DiscardReason is not null;
+                                var isAccepted = Importer.IsRowAccepted(row.Index);
                                 <tr class="@(isDiscarded ? "line-through opacity-60" : "")"
                                     data-slot="spreadsheet-row"
                                     data-index="@row.Index"
-                                    data-status="@row.Status.ToString().ToLowerInvariant()">
+                                    data-status="@(isAccepted ? "imported" : row.Status.ToString().ToLowerInvariant())">
                                     <td class="px-2.5 py-1.5">
                                         <input type="checkbox" aria-label="@T.SelectRow(row.RowNumber)"
                                                checked="@Importer.SelectedRowIndexes.Contains(row.Index)"
                                                data-slot="spreadsheet-row-select"
+                                               disabled="@isAccepted"
                                                @onchange="@(e => Importer.ToggleRowSelection(row.Index, e.Value is true))" />
                                     </td>
                                     <td class="px-2.5 py-1.5">
@@ -746,9 +769,9 @@
                                         </button>
                                     </td>
                                     <td class="px-2.5 py-1.5">
-                                        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold @(row.Status == SpreadsheetRowStatus.Blocking ? "bg-(--klyroo-error)/15 text-(--klyroo-error-text)" : row.Status == SpreadsheetRowStatus.Warning ? "bg-(--klyroo-warning)/15 text-(--klyroo-warning-text)" : "bg-(--klyroo-success)/15 text-(--klyroo-success-text)")"
+                                        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold @(isAccepted ? "bg-(--klyroo-bg-muted) text-(--klyroo-text-muted)" : row.Status == SpreadsheetRowStatus.Blocking ? "bg-(--klyroo-error)/15 text-(--klyroo-error-text)" : row.Status == SpreadsheetRowStatus.Warning ? "bg-(--klyroo-warning)/15 text-(--klyroo-warning-text)" : "bg-(--klyroo-success)/15 text-(--klyroo-success-text)")"
                                               data-slot="spreadsheet-row-status">
-                                            @T.StatusText(row.Status)
+                                            @(isAccepted ? T.StatusImported : T.StatusText(row.Status))
                                         </span>
                                     </td>
                                     @foreach (var f in Importer.Fields)
@@ -770,7 +793,7 @@
                                             else
                                             {
                                                 <button type="button"
-                                                        disabled="@(isDiscarded || !f.Column.Editable)"
+                                                        disabled="@(isDiscarded || isAccepted || Importer.SubmitStatus == SpreadsheetSubmitStatus.Running || !f.Column.Editable)"
                                                         class="flex w-full items-center justify-between gap-1 text-start @(cell?.Issue is not null ? "text-(--klyroo-error-text) font-semibold" : "text-(--klyroo-text)")"
                                                         title="@(cell?.Issue is { } cellIssue ? T.ResolveIssue(cellIssue) : null)"
                                                         data-slot="spreadsheet-cell-trigger"
@@ -837,6 +860,7 @@
                                         <span><strong>@label:</strong> @cell.OriginalText → @cell.Text</span>
                                         <button type="button" class="font-medium text-(--klyroo-primary-text) hover:underline"
                                                 data-slot="inspector-revert"
+                                                disabled="@Importer.IsRowAccepted(inspected.Index)"
                                                 @onclick="@(() => Importer.RevertCell(inspected.Index, fieldKey))">@T.Undo</button>
                                     </div>
                                 }
@@ -844,7 +868,11 @@
                         }
 
                         <div class="flex items-center justify-end gap-2 border-t border-(--klyroo-border) pt-2">
-                            @if (inspected.DiscardReason == SpreadsheetDiscardReason.Manual)
+                            @if (Importer.IsRowAccepted(inspected.Index))
+                            {
+                                <span class="text-(--klyroo-text-muted)" data-slot="inspector-imported">@T.StatusImported</span>
+                            }
+                            else if (inspected.DiscardReason == SpreadsheetDiscardReason.Manual)
                             {
                                 <button type="button" class="font-medium text-(--klyroo-primary-text) hover:underline"
                                         data-slot="inspector-restore"

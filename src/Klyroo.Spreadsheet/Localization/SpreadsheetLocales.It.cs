@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "Avviso",
         StatusBlocking = "Bloccante",
         StatusDiscarded = "Esclusa",
+        StatusImported = "Importata",
         NoRows = "Nessuna riga da mostrare",
         DownloadInvalidRows = n => n == 1 ? "Scarica la riga non valida" : $"Scarica le {Grouped(n, ".")} righe non valide",
         DownloadFailed = message => $"Impossibile scaricare il file: {message}",

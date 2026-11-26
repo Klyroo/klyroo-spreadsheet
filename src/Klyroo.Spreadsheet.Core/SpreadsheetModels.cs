@@ -638,9 +638,38 @@ public sealed partial class SpreadsheetImporter
     public IReadOnlyList<SpreadsheetFieldState> Fields => _fields;
     /// <summary>Every unknown select value found in the file, answered or not.</summary>
     public IReadOnlyList<SpreadsheetValueQuestion> Questions => _questions;
-    /// <summary><see langword="true"/> when a file is loaded, no field is missing, no question is open and at least one row is importable.</summary>
-    public bool CanSubmit =>
-        FileLoaded && MissingFields.Count == 0 && OpenQuestions.Count == 0 && ImportableRows.Count > 0;
+    /// <summary><see langword="true"/> when a file is loaded, no field is missing, no question is open, no async check is running and at least one importable row is still pending (not accepted yet, see <see cref="PendingRows"/>). The component disables its Import button when this is <see langword="false"/>.</summary>
+    public bool CanSubmit => CanSend && HasPendingRows;
+
+    // The conditions to send anything at all: a retry of refused rows needs them too, whether or not other rows are pending.
+    private bool CanSend =>
+        FileLoaded && MissingFields.Count == 0 && OpenQuestions.Count == 0 && ValidationStatus != SpreadsheetValidationStatus.Running;
+
+    private bool HasPendingRows
+    {
+        get
+        {
+            foreach (var row in ImportableRows)
+            {
+                if (!_accepted.Contains(row.Index)) return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// <see langword="true"/> while a submit runs or once some rows were accepted: the column mapping, the sheet, the header row and the answers to value questions
+    /// are then fixed, because the accepted rows were sent as they were read. Methods that would change them do nothing. <see cref="ResetSubmit"/> (or loading another file) unlocks them.
+    /// </summary>
+    public bool MappingLocked => SubmitStatus == SpreadsheetSubmitStatus.Running || _accepted.Count > 0;
+
+    /// <summary>Whether a row was accepted by the host. An accepted row is final: it cannot be edited, left out or restored.</summary>
+    /// <param name="rowIndex">The <see cref="SpreadsheetRow.Index"/> of the row.</param>
+    /// <returns><see langword="true"/> for an accepted row.</returns>
+    public bool IsRowAccepted(int rowIndex) => _accepted.Contains(rowIndex);
+
+    // Rows cannot change while a submit runs (a batch in flight would be recorded as accepted with stale data) nor once accepted.
+    private bool RowLocked(int rowIndex) => SubmitStatus == SpreadsheetSubmitStatus.Running || _accepted.Contains(rowIndex);
 
     // Review state
     /// <summary>The row subset selected for <see cref="VisibleReviewRows"/>.</summary>
@@ -838,6 +867,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="sheetName">The name of the sheet.</param>
     public void SetSheet(string sheetName)
     {
+        if (MappingLocked) return;
         if (_workbook is null || _workbook.Sheets.All(s => s.Name != sheetName)) return;
         _selectedSheetName = sheetName;
         _manualColumns.Clear();
@@ -854,6 +884,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="rowIndex">The index within <see cref="SpreadsheetSheet.Rows"/>, clamped to the sheet.</param>
     public void SetHeaderRow(int rowIndex)
     {
+        if (MappingLocked) return;
         if (CurrentSheet is null) return;
         _headerRowIndex = Math.Clamp(rowIndex, 0, Math.Max(0, CurrentSheet.Rows.Count - 1));
         _manualColumns.Clear();
@@ -870,6 +901,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="headerIndex">The index into <see cref="Headers"/>.</param>
     public void AssignColumn(string fieldKey, int headerIndex)
     {
+        if (MappingLocked) return;
         foreach (var k in _manualColumns.Where(kv => kv.Value == headerIndex).Select(kv => kv.Key).ToList())
         {
             _manualColumns.Remove(k);
@@ -884,6 +916,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="fieldKey">The key of the schema column.</param>
     public void IgnoreColumn(string fieldKey)
     {
+        if (MappingLocked) return;
         _manualColumns[fieldKey] = null;
         Recompute();
         Changed?.Invoke();
@@ -894,6 +927,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="fieldKey">The key of the schema column.</param>
     public void ResetColumn(string fieldKey)
     {
+        if (MappingLocked) return;
         _manualColumns.Remove(fieldKey);
         Recompute();
         Changed?.Invoke();
@@ -906,6 +940,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="answer">The decision.</param>
     public void AnswerValue(string fieldKey, string rawValue, SpreadsheetValueAnswer answer)
     {
+        if (MappingLocked) return;
         var key = $"{fieldKey}::{NormalizeText(rawValue)}";
         _valueAnswers[key] = answer;
         ReparseAnswered(key);
@@ -918,6 +953,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="rawValue">The value the answer was given for.</param>
     public void ClearAnswer(string fieldKey, string rawValue)
     {
+        if (MappingLocked) return;
         var key = $"{fieldKey}::{NormalizeText(rawValue)}";
         _valueAnswers.Remove(key);
         ReparseAnswered(key);
@@ -931,6 +967,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="text">The new cell text, trimmed before use.</param>
     public void EditCell(int rowIndex, string fieldKey, string text)
     {
+        if (RowLocked(rowIndex)) return;
         _edits[(rowIndex, fieldKey)] = text.Trim();
         _serverRejections.Remove(rowIndex);
         ReparseRows([rowIndex], alwaysRebuildQuestions: false);
@@ -942,6 +979,7 @@ public sealed partial class SpreadsheetImporter
     /// <param name="fieldKey">The key of the column.</param>
     public void RevertCell(int rowIndex, string fieldKey)
     {
+        if (RowLocked(rowIndex)) return;
         _edits.Remove((rowIndex, fieldKey));
         ReparseRows([rowIndex], alwaysRebuildQuestions: false);
         Changed?.Invoke();
@@ -951,7 +989,8 @@ public sealed partial class SpreadsheetImporter
     /// <param name="rowIndexes">The <see cref="SpreadsheetRow.Index"/> values to discard.</param>
     public void DiscardRows(IEnumerable<int> rowIndexes)
     {
-        var changed = rowIndexes.ToList();
+        var changed = rowIndexes.Where(i => !RowLocked(i)).ToList();
+        if (changed.Count == 0) return;
         foreach (var idx in changed) _manualDiscards.Add(idx);
         _selectedRows.Clear();
         RefinalizeRows(changed);
@@ -962,10 +1001,11 @@ public sealed partial class SpreadsheetImporter
     /// <param name="rowIndexes">The <see cref="SpreadsheetRow.Index"/> values to restore.</param>
     public void RestoreRows(IEnumerable<int> rowIndexes)
     {
-        var changed = rowIndexes.ToList();
+        var changed = rowIndexes.Where(i => !RowLocked(i)).ToList();
+        if (changed.Count == 0) return;
         foreach (var idx in changed) _manualDiscards.Remove(idx);
         _selectedRows.Clear();
-        _asyncDirty = true;
+        MarkAsyncDirty();
         RefinalizeRows(changed);
         Changed?.Invoke();
     }
@@ -1287,9 +1327,26 @@ public sealed partial class SpreadsheetImporter
         var cols = Schema.Columns.Where(c => string.IsNullOrEmpty(c.From)).ToList();
         var sb = new StringBuilder();
         sb.Append('\uFEFF');
-        sb.AppendLine(string.Join(',', cols.Select(c => $"\"{c.Headers?.FirstOrDefault() ?? c.EffectiveLabel}\"")));
-        sb.AppendLine(string.Join(',', cols.Select(c => $"\"{c.Example ?? ""}\"")));
+        sb.AppendLine(string.Join(',', cols.Select(c => CsvCell(c.Headers?.FirstOrDefault() ?? c.EffectiveLabel))));
+        sb.AppendLine(string.Join(',', cols.Select(c => CsvCell(c.Example ?? ""))));
         return sb.ToString();
+    }
+
+    // One quoted CSV cell, safe to open in a spreadsheet application. A text that starts with = @ tab or carriage return, or with + or - and is not
+    // a plain number, would be read as a formula (CSV injection), so it gets an apostrophe in front, which spreadsheets show as text. Quotes are doubled.
+    private static string CsvCell(string value)
+    {
+        if (IsFormulaLike(value)) value = "'" + value;
+        return $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
+
+    private static bool IsFormulaLike(string value)
+    {
+        if (value.Length == 0) return false;
+        if (value[0] is '=' or '@' or '\t' or '\r') return true;
+        if (value[0] is not ('+' or '-')) return false;
+        // "-12", "+3.5", "-1,250.00" are numbers, not formulas.
+        return !value.AsSpan(1).Trim().ToString().All(c => char.IsDigit(c) || c is '.' or ',' or ' ' or '\u00A0' or '\'') || value.Length == 1;
     }
 
     /// <summary>Builds a CSV of the rows with errors so users can fix them in their own tool and import the file again.</summary>
@@ -1299,20 +1356,18 @@ public sealed partial class SpreadsheetImporter
     public string ExportInvalidRowsCsv(Func<SpreadsheetRowIssue, string>? issueText = null, string issuesHeader = "Issues")
     {
         issueText ??= i => i.Message;
-        static string Quote(string value) => $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
-
         var fields = _fields.Where(f => string.IsNullOrEmpty(f.Column.From)).ToList();
         var sb = new StringBuilder();
         sb.Append('\uFEFF');
         var headers = fields
             .Select(f => f.HeaderText ?? f.Column.Headers?.FirstOrDefault() ?? f.Column.EffectiveLabel)
             .Append(issuesHeader);
-        sb.AppendLine(string.Join(',', headers.Select(Quote)));
+        sb.AppendLine(string.Join(',', headers.Select(CsvCell)));
         foreach (var row in InvalidRows)
         {
             var cells = fields.Select(f => row.Cells.TryGetValue(f.Column.Key, out var cv) ? cv.Text : "");
             var issuesText = string.Join("; ", row.Issues.Select(i => i.Field is not null ? $"{i.Field}: {issueText(i)}" : issueText(i)));
-            sb.AppendLine(string.Join(',', cells.Append(issuesText).Select(Quote)));
+            sb.AppendLine(string.Join(',', cells.Append(issuesText).Select(CsvCell)));
         }
         return sb.ToString();
     }

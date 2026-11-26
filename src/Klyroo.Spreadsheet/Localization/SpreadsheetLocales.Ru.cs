@@ -88,6 +88,7 @@ public static partial class SpreadsheetLocales
         StatusWarning = "Предупреждение",
         StatusBlocking = "Блокирует",
         StatusDiscarded = "Исключена",
+        StatusImported = "Импортирована",
         NoRows = "Нет строк для отображения",
         DownloadInvalidRows = n => $"Скачать недопустимые строки ({Grouped(n, " ")})",
         DownloadFailed = message => $"Не удалось скачать файл: {message}",

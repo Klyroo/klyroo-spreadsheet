@@ -66,7 +66,7 @@ What happens for each row of that file:
 
 `Pattern` matches with a timeout (100 ms by default, the `matchTimeout` argument changes it), so a pasted value built to trigger catastrophic backtracking cannot freeze the import: that cell gets a `pattern` issue saying the format could not be checked in time.
 
-A timeout costs the full timeout, so a hostile file of 50,000 cells could still cost 50,000 times 100 ms. A circuit breaker prevents that: after `SpreadsheetSchema.RuleTimeoutLimit` timeouts (3 by default, zero or less turns it off) the importer stops evaluating that rule for the rest of the read and lists it once in `importer.DisabledRules` (column key, rule code, timeouts). The component shows one notice naming the column and the rule. Only the cells read before the rule stopped carry a timeout issue, and the cells after it were not checked by that rule, so treat a non-empty `DisabledRules` as a reason to review the file. Reading the file again (a new file, sheet, header row or column choice) starts the count again.
+A timeout costs the full timeout, so a hostile file of 50,000 cells could still cost 50,000 times 100 ms. A circuit breaker prevents that: after `SpreadsheetSchema.RuleTimeoutLimit` timeouts (3 by default, zero or less turns it off) the importer stops evaluating that rule for the rest of the read and lists it once in `importer.DisabledRules` (column key, rule code, timeouts). The component shows one notice naming the column and the rule. The values after the rule stopped are not waved through: each gets the same "could not be checked in time" issue, at the severity of the rule (blocking for the default), without running the regex, so a hostile file cannot make its later values importable. Reading the file again (a new file, sheet, header row or column choice) starts the count again.
 
 Three details are easy to miss. A rule only runs on a non-empty value that parsed. The `Min`, `Max` and `Between` rules only accept a `double`, so use them on `Number` columns. And `DefaultValue` is applied only when `HasDefault` is `true`, which lets a default be `null` on purpose.
 
@@ -322,6 +322,8 @@ Console.WriteLine(importer.ImportedCount);       // 6
 
 An exception your callback throws is caught and reported in `SubmitError`. Batches already accepted are not undone.
 
+Accepted rows are final. They show as Imported in the component, and `EditCell`, `RevertCell`, `DiscardRows` and `RestoreRows` ignore them (`IsRowAccepted(index)` tells). While a submit runs, rows cannot be edited either, so a batch in flight is never recorded as accepted with data that changed. Once any row is accepted, and while a submit runs, `MappingLocked` is `true` and the column mapping, the answers to value questions, the sheet and the header row cannot change; `ResetSubmit()` unlocks them. `CanSubmit` is `false` when nothing is pending, so there is no "Import 0 rows", and `RetryRejectedAsync` needs the same conditions (no check running, no open question). A refusal for a row that was not in the batch is ignored.
+
 ## Check rows and records against your server
 
 Goal: validate rows with data only your server has, without loading it all in memory.
@@ -369,7 +371,7 @@ var schema = new SpreadsheetSchema
 
 **Batched validation.** `ValidateRowsAsync` receives rows that are not discarded and have no error yet (and whose mode the lookup has set), `ValidateBatchSize` (500) at a time, and returns `SpreadsheetIndexedIssue` values: the row index and the issue to add. An error blocks the row, a warning does not.
 
-**When they run.** `await importer.ValidateAsync(cancellationToken)` runs the lookup and then the validation, on what was not checked yet. `NeedsAsyncValidation` tells whether anything changed since: loading a file, mapping a column or answering a value makes every row unchecked, and editing a row makes that row unchecked, which is also the only row sent next time. The component runs them when the review opens and again after edits, shows "Checking the rows" with a Cancel button, and shows the error with a Check again button when a callback throws. `SubmitAsync` runs them too when they are pending, so the rows it sends are the ones that passed: rows the validator flags are left out and show as invalid. `ValidationStatus` and `ValidationError` report the state, `CancelValidation()` stops a run, and the results of the batches that finished are kept. A failed run is not retried by itself: call `ValidateAsync` again.
+**When they run.** `await importer.ValidateAsync(cancellationToken)` runs the lookup and then the validation, on what was not checked yet. `NeedsAsyncValidation` tells whether anything changed since: loading a file, mapping a column or answering a value makes every row unchecked, and editing a row makes that row unchecked, which is also the only row sent next time. The component runs them when the review opens and again after edits, shows "Checking the rows" with a Cancel button, and shows the error with a Check again button when a callback throws. `SubmitAsync` runs them too when they are pending (after a failed or cancelled run as well, so a retry checks again), so the rows it sends are the ones that passed: rows the validator flags are left out and show as invalid. `CanSubmit` is `false` while a check runs, `SubmitAsync` does nothing then, and the component disables Import. An answer that arrives after the user edited the row, or after the file was read again, is not applied: that row stays unchecked for the next run, and raising the row limit makes the rows it takes in unchecked too. `ValidationStatus` and `ValidationError` report the state, `CancelValidation()` stops a run, and the results of the batches that finished are kept. A failed run is not retried by itself: call `ValidateAsync` again.
 
 **Creating an option.** `OnCreateOptionAsync` is the asynchronous `OnCreateOption`. Setting either makes the component offer the create choice. When both are set, the asynchronous one is used.
 
@@ -406,6 +408,8 @@ var next = new SpreadsheetImporter(schema) { SavedMapping = SpreadsheetMappingPr
 next.LoadText(nextFile, "bank-april.csv");
 Console.WriteLine(next.SavedMappingApplied);            // true: the columns are mapped, the "Gold" question is answered
 ```
+
+A header that appears several times in the file (two `Date` columns) is stored by occurrence: `Columns` holds the first one and `RepeatedColumns` the others (`"2:date"` is the second column headed `date`), so a re-applied profile sends each occurrence to its own column. A stored profile is untrusted input: null keys and values, unknown columns, a `Map` answer that is not one of the column's options, a `Create` answer for a column that cannot create options and an undefined action are skipped without an exception.
 
 The profile is applied whenever a file is loaded, or the user picks another sheet or header row, and every header it maps is present in the file (compared like column matching: case, accents and a trailing `*` ignored, any order, extra file columns allowed). It also helps to find the header row: a row whose headers the profile maps counts as a header row, so a renamed header under a banner is found. A file that does not match is read as usual, and the user can still change any choice, which wins over the profile. A profile made for another `SpreadsheetSchema.Key`, or of another `Version`, is never applied. `KlySpreadsheetImport` says "Your saved column mapping was applied" when it was. Use `ApplyMappingProfile(profile)` to apply one yourself and read what it did, and `MatchesMappingProfile(profile)` to test a file without applying anything.
 
@@ -456,7 +460,7 @@ foreach (var issue in importer.InvalidRows.SelectMany(r => r.Issues))
 
 The invalid rows download is written in the locale too (`ExportInvalidRowsCsv` takes the function that turns an issue into text and the heading of the last column). The text you give to the component is never translated: `Title` (the heading defaults to the word Import of the locale), column labels and descriptions, and your own rule messages. The `InvalidDataException` messages of the file readers are English.
 
-**Announcements.** The component has a visually hidden live region (`aria-live="polite"`) that says the counts of the review as they change ("To import: 118. With errors: 2. Left out: 0.") and the progress and the end of the import ("Importing: 40 of 120 rows", "120 rows imported"), in the locale of the user. The notices that appear on their own (saved mapping applied, row limit, state of the checks) are `role="status"` regions too.
+**Announcements.** The component has a visually hidden live region (`aria-live="polite"`) that says the counts of the review as they change ("To import: 118. With errors: 2. Left out: 0.") and the progress and the end of the import ("Importing: 40 of 120 rows", "120 rows imported"), in the locale of the user. Progress is announced at most every 3 seconds, not per batch, and the end at once; before the number of rows to send is known it says only "Importing…". The notices that appear on their own (saved mapping applied, row limit, state of the checks) are `role="status"` regions too.
 
 ## Read an Excel file
 
@@ -555,7 +559,7 @@ The wizard offers both. The file step has a Download a template button, and the 
 }
 ```
 
-`ExportTemplateCsv` writes a header row and an example row (`Example` of each column) for every column that is not computed with `From`. `ExportInvalidRowsCsv` lists the rows that are invalid and not discarded, with an `Issues` column. Both start with a byte order mark so Excel opens them as UTF-8. The invalid rows export has one column per schema column, in schema order, headed by the file header it was read from, so the user can fix the cells and import the file again.
+`ExportTemplateCsv` writes a header row and an example row (`Example` of each column) for every column that is not computed with `From`. `ExportInvalidRowsCsv` lists the rows that are invalid and not discarded, with an `Issues` column. Both start with a byte order mark so Excel opens them as UTF-8, double the quotes inside a cell, and guard against CSV injection: a text that starts with `=`, `@`, a tab or a carriage return, or with `+` or `-` when it is not a plain number (`-12,50` stays a number), gets an apostrophe in front, in headers, examples, cells and the issues column, so a spreadsheet application shows it as text instead of running it. A user who fixes the file and imports it again will find the apostrophe on those cells. The invalid rows export has one column per schema column, in schema order, headed by the file header it was read from, so the user can fix the cells and import the file again.
 
 ## Test an import
 
