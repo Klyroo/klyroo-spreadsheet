@@ -18,8 +18,46 @@ packages:
   - Klyroo.Spreadsheet.Core
   - Klyroo.Spreadsheet
 
-# The primary color of the site, the name of a Tailwind palette (blue, emerald, violet...). Without it the Klyroo colors are used.
-# accent: blue
+# The home page. headline is two lines, the second in the accent color; lead is the paragraph under it. Without them: the title and the tagline.
+headline: |
+  Imports that survive
+  real spreadsheets.
+lead: >-
+  User files rarely match your model: the header is on row 3, a column is named differently, a status says Gold where you expect pro. Klyroo.Spreadsheet maps columns and values, validates rows and sends the importable ones to your code.
+
+# The accent of the site (#rrggbb): buttons, links, marks and the second line of the headline. The text variants that pass the contrast rules in light and
+# dark mode are computed from it. Without it: the color of the library in klyroo-stack/docs-site/Klyroo.Docs.Site/libraries.yml.
+accent: "#14b8a6"
+
+# The texture of the ground behind the header and the hero: blueprint-grid, dot-matrix, ruled-rows, baseline-grid, chart-ticks, halftone, cell-grid or node-dots.
+texture: cell-grid
+
+# What the hero demonstrates. Either board: table | form (a board with feature chips and several results, authored in docs-site), or a simple hero: the code,
+# the lines the leader line starts at (focus) and one result (output: lines of text, or preview: ui-settings | display-stat | spreadsheet-rows).
+demo:
+  file: Program.cs
+  language: csharp
+  focus: 12-16
+  code: |
+    var schema = SpreadsheetSchema.For<PriceRow>(s =>
+    {
+        s.Column(r => r.Sku, c => c.Label("SKU").Required());
+        s.Column(r => r.Price, c => c.Label("Unit price").DecimalSeparator(',').Required().Rule(SpreadsheetRule.Min(0m)));
+        s.Column(r => r.Currency, c => c.Options(
+        [
+            new SpreadsheetOption<Currency>(Currency.Eur, "Euro", ["€"]),
+            new SpreadsheetOption<Currency>(Currency.Usd, "US dollar", ["$"]),
+        ]));
+    });
+
+    var importer = new SpreadsheetImporter<PriceRow>(schema);
+    importer.LoadText("SKU;Unit price;Currency\nA-1;12,50;€\nA-2;-3;USD", "prices.csv");
+
+    Console.WriteLine(importer.ImportableRows.Count); // 1
+    Console.WriteLine(importer.InvalidRows.Count);    // 1: A-2 has a negative price
+  result:
+    title: The rows of prices.csv
+    preview: spreadsheet-rows
 
 # The pages in the order of the navigation. docs/README.md comes first, as "Documentation". A page that is not listed follows, by file name.
 # An entry is a file name below docs/ without .md, or a map with page and any of: title, navTitle, description, tocDepth, indexText. A group has a group name and its pages.
