@@ -427,7 +427,7 @@ public static class SpreadsheetColumnBuilderExtensions
         return builder;
     }
 
-    /// <summary>Sets the exact formats a <see cref="DateTimeOffset"/> column reads, instead of the defaults. Cells carry no offset: they are read as UTC.</summary>
+    /// <summary>Sets the exact formats a <see cref="DateTimeOffset"/> column reads, instead of the defaults. An offset in the cell (a format with <c>zzz</c> or <c>K</c>) is kept, so <c>2026-03-05 10:00 +02:00</c> is that instant with that offset whatever the time zone of the machine; a cell without an offset is read as UTC.</summary>
     /// <typeparam name="TRow">The row type.</typeparam>
     /// <param name="builder">The column builder.</param>
     /// <param name="formats">Exact <see cref="DateTime"/> format strings.</param>
@@ -438,7 +438,7 @@ public static class SpreadsheetColumnBuilderExtensions
         return builder;
     }
 
-    /// <summary>Sets the exact formats a nullable <see cref="DateTimeOffset"/> column reads, instead of the defaults. Cells carry no offset: they are read as UTC.</summary>
+    /// <summary>Sets the exact formats a nullable <see cref="DateTimeOffset"/> column reads, instead of the defaults. An offset in the cell (a format with <c>zzz</c> or <c>K</c>) is kept, so <c>2026-03-05 10:00 +02:00</c> is that instant with that offset whatever the time zone of the machine; a cell without an offset is read as UTC.</summary>
     /// <typeparam name="TRow">The row type.</typeparam>
     /// <param name="builder">The column builder.</param>
     /// <param name="formats">Exact <see cref="DateTime"/> format strings.</param>

@@ -1411,13 +1411,16 @@ public abstract partial class SpreadsheetImporter
 
             case SpreadsheetColumnKind.Date:
                 var formats = col.DateFormats is { Count: > 0 } ? col.DateFormats.ToArray() : DefaultDateFormats;
-                if (DateTime.TryParseExact(text.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                // The instant is read as a DateTimeOffset, a cell with no offset counting as UTC, so the machine's time zone never shifts a value. The text
+                // keeps the offset only when the cell wrote one; the date and time are the ones written.
+                var dateText = text.Trim();
+                if (DateTimeOffset.TryParseExact(dateText, formats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var written))
                 {
-                    value = dt.TimeOfDay == TimeSpan.Zero
-                        ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                        : dt.Second == 0
-                            ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
-                            : dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+                    var hasOffset = written.Offset != TimeSpan.Zero
+                        || (DateTime.TryParseExact(dateText, formats, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var probe) && probe.Kind != DateTimeKind.Unspecified);
+                    value = hasOffset
+                        ? SpreadsheetValueConverter.IsoDateTime(written.DateTime, withTime: true) + written.ToString("zzz", CultureInfo.InvariantCulture)
+                        : SpreadsheetValueConverter.IsoDateTime(written.DateTime);
                     error = null;
                     return true;
                 }

@@ -7,7 +7,7 @@ namespace Klyroo.Spreadsheet;
 // generic instantiation at runtime, so it stays NativeAOT friendly.
 internal static class SpreadsheetValueConverter
 {
-    private static readonly string[] IsoFormats = ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss"];
+    private static readonly string[] IsoFormats = ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mmzzz", "yyyy-MM-ddTHH:mm:sszzz"];
 
     internal static Type Underlying(Type valueType) => Nullable.GetUnderlyingType(valueType) ?? valueType;
 
@@ -61,8 +61,8 @@ internal static class SpreadsheetValueConverter
     };
 
     // yyyy-MM-dd at midnight, otherwise with the time to the minute, or to the second when it has seconds.
-    internal static string IsoDateTime(DateTime dt) =>
-        dt.TimeOfDay == TimeSpan.Zero
+    internal static string IsoDateTime(DateTime dt, bool withTime = false) =>
+        dt.TimeOfDay == TimeSpan.Zero && !withTime
             ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : dt.Second == 0 && dt.Ticks % TimeSpan.TicksPerSecond == 0
                 ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
@@ -275,14 +275,15 @@ internal static class SpreadsheetValueConverter
     {
         value = null;
         error = null;
-        if (!DateTime.TryParseExact(iso, IsoFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        // A text without an offset is UTC; one with an offset is the instant it says. A DateOnly or DateTime keeps the written date and time.
+        if (!DateTimeOffset.TryParseExact(iso, IsoFormats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var instant))
         {
             error = $"\"{cellText}\" is not a date this column reads";
             return false;
         }
-        if (t == typeof(DateOnly)) value = DateOnly.FromDateTime(dt);
-        else if (t == typeof(DateTimeOffset)) value = new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Unspecified), TimeSpan.Zero);
-        else value = dt;
+        if (t == typeof(DateOnly)) value = DateOnly.FromDateTime(instant.DateTime);
+        else if (t == typeof(DateTimeOffset)) value = instant;
+        else value = instant.DateTime;
         return true;
     }
 }

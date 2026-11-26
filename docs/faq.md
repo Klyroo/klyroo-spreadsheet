@@ -27,7 +27,7 @@ A `Number` column uses one convention. With the default `DecimalSeparator('.')`,
 
 **Dates are rejected**
 
-A date column (a `DateOnly`, `DateTime` or `DateTimeOffset` property) accepts exact formats only: `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`, or the ones you list with `DateFormats` (which replace the defaults). `02/13/2026` and Excel serial numbers fail. The property gets a real date: a `DateOnly` keeps the date part, a `DateTime` has an unspecified kind, and a `DateTimeOffset` reads the cell as UTC, since a cell carries no offset.
+A date column (a `DateOnly`, `DateTime` or `DateTimeOffset` property) accepts exact formats only: `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`, or the ones you list with `DateFormats` (which replace the defaults). `02/13/2026` and Excel serial numbers fail. A `DateTimeOffset` column reads a cell without an offset as UTC, and keeps an offset the cell writes when a format of `DateFormats` has `zzz` or `K` (`DateFormats("yyyy-MM-dd HH:mm zzz")` reads `2026-03-05 10:00 +02:00` as that instant with the offset `+02:00`), whatever the time zone of the server. A `DateOnly` or `DateTime` column keeps the date and time as written and ignores an offset, so it does not move with the server's time zone either. The property gets a real date: a `DateOnly` keeps the date part, a `DateTime` has an unspecified kind, and a `DateTimeOffset` reads the cell as UTC, since a cell carries no offset.
 
 **Accented characters come out garbled**
 
