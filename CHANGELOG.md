@@ -21,6 +21,7 @@ All notable changes to this project are documented in this file. The format foll
 - A step skipped because it had nothing to resolve, such as the columns step, can be reopened from the step bar to re-map a column.
 - An issue filter of `|code` matches issues on the whole row, such as `row.duplicate`.
 - A `Number` cell with a misplaced thousands separator, such as `12,50` with `DecimalSeparator = '.'`, is now rejected with a `number` issue instead of being read as `1250`.
+- A cell formatted as an elapsed time (`[h]:mm`, `[mm]:ss`, built-in format 46) is read as its number of days, like other numbers, instead of as a date.
 - `ExportInvalidRowsCsv` wrote the file's own headers above values in schema order, so columns were shifted when the file used another order. Headers now follow the schema columns.
 
 ## [0.1.0-preview.1] - 2026-11-24

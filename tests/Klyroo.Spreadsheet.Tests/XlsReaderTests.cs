@@ -134,6 +134,17 @@ public sealed class XlsReaderTests
     }
 
     [Fact]
+    public void An_elapsed_time_format_gives_a_duration_and_not_a_date()
+    {
+        // XF 2 = built-in 46 "[h]:mm:ss", XF 3 = "[h]:mm", XF 4 = "[mm]:ss", XF 5 = "h:mm" (a time of day).
+        var book = Book([], Biff.Number(0, 0, 2, 1.5), Biff.Number(0, 1, 3, 1.5), Biff.Number(0, 2, 4, 0.25), Biff.Number(0, 3, 5, 0.5));
+        book.XfFormats.AddRange([46, 164, 165, 166]);
+        book.Formats.AddRange([(164, "[h]:mm"), (165, "[mm]:ss"), (166, "h:mm")]);
+
+        Assert.Equal([["1.5", "1.5", "0.25", "1899-12-30 12:00"]], Rows(Read(book.BuildFile()).Sheets[0]));
+    }
+
+    [Fact]
     public void The_1904_date_system_is_honoured()
     {
         var book = Book([], Biff.Number(0, 0, 1, 44196), Biff.Number(0, 1, 1, 0));

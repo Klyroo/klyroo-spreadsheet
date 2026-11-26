@@ -8,20 +8,6 @@ Static classes and extensions (2) · Classes (3) · Records (13) · Enums (13)
 
 ### Static classes and extensions
 
-#### `SpreadsheetXlsxReader`
-
-`Klyroo.Spreadsheet` · service
-
-Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `SpreadsheetWorkbook`, with the base class library only. Every worksheet becomes a sheet. Shared, inline and formula strings are read as text, numbers keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become `TRUE` or `FALSE`, and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (`.xls`) is read by `SpreadsheetXlsReader`.
-
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `const MaxPartLength = 268435456` | `long` | The largest uncompressed size of one part of the file, 256 MB, beyond which the file is refused. |
-
-| Method | Returns | Description |
-| :--- | :--- | :--- |
-| `static Read(Stream stream, string fileName)` | `SpreadsheetWorkbook` | Reads a workbook. |
-
 #### `SpreadsheetXlsReader`
 
 `Klyroo.Spreadsheet` · service
@@ -31,6 +17,20 @@ Reads a legacy Excel workbook (`.xls`: BIFF8 records inside an OLE2 compound fil
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `const MaxFileLength = 268435456` | `long` | The largest file, and the largest decoded stream, 256 MB, beyond which the file is refused. |
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `static Read(Stream stream, string fileName)` | `SpreadsheetWorkbook` | Reads a workbook. |
+
+#### `SpreadsheetXlsxReader`
+
+`Klyroo.Spreadsheet` · service
+
+Reads an Excel workbook in the Office Open XML format (`.xlsx`) into a `SpreadsheetWorkbook`, with the base class library only. Every worksheet becomes a sheet. Shared, inline and formula strings are read as text, numbers keep the invariant culture (the importer reads them whatever the column's decimal mark), booleans become `TRUE` or `FALSE`, and numbers formatted as dates become `yyyy-MM-dd` (with `HH:mm` or `HH:mm:ss` when they have a time). Formulas are not evaluated: the value Excel saved is used. The legacy binary format (`.xls`) is read by `SpreadsheetXlsReader`.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `const MaxPartLength = 268435456` | `long` | The largest uncompressed size of one part of the file, 256 MB, beyond which the file is refused. |
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
@@ -620,7 +620,7 @@ Components (1) · Static classes and extensions (1)
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `Importer` | `SpreadsheetImporter` | The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text or `.xlsx`, through `SpreadsheetImporter.LoadFileAsync`) or by pasting rows; your code can also call `SpreadsheetImporter.LoadText` or `SpreadsheetImporter.LoadWorkbook`. |
+| `Importer` | `SpreadsheetImporter` | The importer that holds the import state. The component renders it and calls its methods. Users load a file by choosing or dropping it on the file step (CSV, TSV, text, `.xlsx` or `.xls`, through `SpreadsheetImporter.LoadFileAsync`) or by pasting rows; your code can also call `SpreadsheetImporter.LoadText` or `SpreadsheetImporter.LoadWorkbook`. |
 | `MaxFileSize` | `long` | The largest file users can choose, in bytes. Defaults to 10 MB. |
 | `Title` | `string` | The heading shown above the wizard. Defaults to `Import`. |
 | `Wizard` | `bool` | Shows the step bar and the Back, Continue and Import buttons. When `false` only the current step is rendered and your code moves between steps with the importer's step methods. |
