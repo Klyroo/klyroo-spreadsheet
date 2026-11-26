@@ -272,7 +272,7 @@ public sealed class SpreadsheetColumnSchema
     public object? DefaultValue { get; init; }
     /// <summary>Set to <see langword="true"/> to apply <see cref="DefaultValue"/>, which lets the default itself be <see langword="null"/>. A column with a default is never missing.</summary>
     public bool HasDefault { get; init; }
-    /// <summary>The decimal mark of <see cref="SpreadsheetColumnKind.Number"/> cells, <c>.</c> or <c>,</c>. The other character is treated as a thousands separator and removed.</summary>
+    /// <summary>The decimal mark of <see cref="SpreadsheetColumnKind.Number"/> cells, <c>.</c> or <c>,</c>. The other character is accepted as a thousands separator only between groups of three digits, so <c>12,50</c> is rejected when the mark is <c>.</c>.</summary>
     public char DecimalSeparator { get; init; } = '.';
     /// <summary>Exact <see cref="DateTime"/> format strings accepted for <see cref="SpreadsheetColumnKind.Date"/> cells. When empty, the defaults are <c>yyyy-MM-dd</c>, <c>yyyy-MM-dd HH:mm</c>, <c>yyyy-MM-dd HH:mm:ss</c>, <c>dd/MM/yyyy</c> and <c>dd/MM/yyyy HH:mm</c>.</summary>
     public IReadOnlyList<string>? DateFormats { get; init; }
@@ -492,6 +492,9 @@ public sealed record SpreadsheetStepStatus(
 /// </remarks>
 public sealed class SpreadsheetImporter
 {
+    private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
+    private static readonly Regex CommaDecimalNumber = new(@"^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d*)(?:,\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
+
     /// <summary>How many leading rows of a sheet are scanned to find the header row.</summary>
     public const int HeaderScanRows = 20;
     /// <summary>The share of sampled cells that must parse and pass the error-level rules before a file column is suggested for a missing column.</summary>
@@ -1154,25 +1157,24 @@ public sealed class SpreadsheetImporter
         return sb.ToString();
     }
 
-    /// <summary>Builds a CSV of the rows with errors so users can fix them in their own tool.</summary>
-    /// <returns>Comma-separated text starting with a byte order mark. The header line is the file's own headers plus <c>Issues</c>, while cell values follow the schema column order, so both only line up when the file lists its columns in schema order.</returns>
+    /// <summary>Builds a CSV of the rows with errors so users can fix them in their own tool and import the file again.</summary>
+    /// <returns>Comma-separated text starting with a byte order mark. There is one column per schema column that is not computed with <see cref="SpreadsheetColumnSchema.From"/>, in schema order, headed by the file header it was read from (or the first of <see cref="SpreadsheetColumnSchema.Headers"/>, or the label, when it was not mapped), then an <c>Issues</c> column. Cells hold the text being parsed, user edits included.</returns>
     public string ExportInvalidRowsCsv()
     {
+        static string Quote(string value) => $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+
+        var fields = _fields.Where(f => string.IsNullOrEmpty(f.Column.From)).ToList();
         var sb = new StringBuilder();
         sb.Append('\uFEFF');
-        var headers = Headers.Concat(["Issues"]).Select(h => $"\"{h.Replace("\"", "\"\"", StringComparison.Ordinal)}\"");
-        sb.AppendLine(string.Join(',', headers));
+        var headers = fields
+            .Select(f => f.HeaderText ?? f.Column.Headers?.FirstOrDefault() ?? f.Column.EffectiveLabel)
+            .Append("Issues");
+        sb.AppendLine(string.Join(',', headers.Select(Quote)));
         foreach (var row in InvalidRows)
         {
-            var cells = new List<string>();
-            foreach (var f in _fields)
-            {
-                row.Cells.TryGetValue(f.Column.Key, out var cv);
-                cells.Add($"\"{(cv?.Text ?? "").Replace("\"", "\"\"", StringComparison.Ordinal)}\"");
-            }
+            var cells = fields.Select(f => row.Cells.TryGetValue(f.Column.Key, out var cv) ? cv.Text : "");
             var issuesText = string.Join("; ", row.Issues.Select(i => i.Field is not null ? $"{i.Field}: {i.Message}" : i.Message));
-            cells.Add($"\"{issuesText.Replace("\"", "\"\"", StringComparison.Ordinal)}\"");
-            sb.AppendLine(string.Join(',', cells));
+            sb.AppendLine(string.Join(',', cells.Append(issuesText).Select(Quote)));
         }
         return sb.ToString();
     }
@@ -1702,10 +1704,14 @@ public sealed class SpreadsheetImporter
                 var cleaned = text.Replace(" ", "", StringComparison.Ordinal)
                     .Replace("\u00A0", "", StringComparison.Ordinal)
                     .Replace("'", "", StringComparison.Ordinal);
-                cleaned = col.DecimalSeparator == ','
+                // A thousands separator is accepted only between groups of three digits, so "12,50" with a
+                // '.' decimal mark is rejected instead of being read as 1250.
+                var commaDecimal = col.DecimalSeparator == ',';
+                var wellFormed = (commaDecimal ? CommaDecimalNumber : DotDecimalNumber).IsMatch(cleaned);
+                cleaned = commaDecimal
                     ? cleaned.Replace(".", "", StringComparison.Ordinal).Replace(',', '.')
                     : cleaned.Replace(",", "", StringComparison.Ordinal);
-                if (double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                if (wellFormed && double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
                 {
                     value = d;
                     error = null;

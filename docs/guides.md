@@ -341,7 +341,7 @@ File.WriteAllText("template.csv", importer.ExportTemplateCsv());
 File.WriteAllText("rejected.csv", importer.ExportInvalidRowsCsv());
 ```
 
-`ExportTemplateCsv` writes a header row and an example row (`Example` of each column) for every column that is not computed with `From`. `ExportInvalidRowsCsv` lists the rows that are invalid and not discarded, with an `Issues` column. Both start with a byte order mark so Excel opens them as UTF-8. In the invalid rows export, the header line is the file's own header while the values follow the order of your schema, so the columns only line up when the user's file lists them in schema order.
+`ExportTemplateCsv` writes a header row and an example row (`Example` of each column) for every column that is not computed with `From`. `ExportInvalidRowsCsv` lists the rows that are invalid and not discarded, with an `Issues` column. Both start with a byte order mark so Excel opens them as UTF-8. The invalid rows export has one column per schema column, in schema order, headed by the file header it was read from, so the user can fix the cells and import the file again.
 
 ## Test an import
 

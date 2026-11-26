@@ -25,9 +25,9 @@ The importer matches headers exactly after normalization, so look at what differ
 
 A suggestion needs all of these: the column is required with no default and has no match, it is not a plain text column (set a `Kind`, a `CustomParse` or a rule), the candidate file column is not already used, it has at least two non-empty cells, and at least 80% of its first 30 non-empty cells parse and pass the error-level rules. A file with a single data row never gets a suggestion.
 
-**Numbers are read wrong without any error**
+**Numbers are rejected**
 
-A `Number` column uses one convention. With the default `DecimalSeparator = '.'`, a comma is removed as a thousands separator, so `12,50` becomes `1250`. With `DecimalSeparator = ','`, dots are removed and the comma becomes the decimal point, so `1,234.50` becomes `1.2345`. Both parse successfully and neither raises an issue. Set the separator that matches your users' files, add a `Between` or `Max` rule to catch absurd values, or use `CustomParse` to normalize the text yourself. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator = ','`. Percent signs and currency symbols are not accepted.
+A `Number` column uses one convention. With the default `DecimalSeparator = '.'`, a comma is accepted only as a thousands separator between groups of three digits, so `1,234.50` reads as `1234.5` and `12,50` raises a `number` issue. With `DecimalSeparator = ','` the roles swap: `1.234,50` is accepted and `1,234.50` is rejected. Set the separator that matches your users' files, or use `CustomParse` to normalize the text yourself. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator = ','`. Percent signs and currency symbols are not accepted.
 
 **Dates are rejected**
 
@@ -60,10 +60,6 @@ Link `_content/Klyroo.Spreadsheet/klyroo-spreadsheet.css` after the two Klyroo.U
 **Buttons do nothing**
 
 The page is rendered with Static SSR. The component needs an interactive render mode, see [Platforms](platforms.md#blazor-render-modes). With `Wizard="false"` the component has no buttons for moving between steps: call `NextStep()` yourself.
-
-**`ExportInvalidRowsCsv` puts values under the wrong header**
-
-The header line is the file's own header row, while the values follow the order of your schema. They match only when the file lists its columns in the schema's order. Build your own export from `importer.InvalidRows` if the orders differ.
 
 ## Known limitations
 

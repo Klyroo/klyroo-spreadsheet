@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Fixed
+
+- A `Number` cell with a misplaced thousands separator, such as `12,50` with `DecimalSeparator = '.'`, is now rejected with a `number` issue instead of being read as `1250`.
+- `ExportInvalidRowsCsv` wrote the file's own headers above values in schema order, so columns were shifted when the file used another order. Headers now follow the schema columns.
+
 ## [0.1.0-preview.1] - 2026-11-24
 
 ### Added

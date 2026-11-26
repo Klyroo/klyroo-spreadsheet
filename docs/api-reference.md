@@ -22,7 +22,7 @@ Declares one field of the imported data: how to find it in the file, how to pars
 | :--- | :--- | :--- |
 | `CustomParse` (init) | `Func<string, object?>?` | Replaces the built-in parsing of non-select columns. It receives the cell text and returns the value. An exception marks the cell as an error with the exception message. |
 | `DateFormats` (init) | `IReadOnlyList<string>?` | Exact `DateTime` format strings accepted for `SpreadsheetColumnKind.Date` cells. When empty, the defaults are `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy-MM-dd HH:mm:ss`, `dd/MM/yyyy` and `dd/MM/yyyy HH:mm`. |
-| `DecimalSeparator` (init) | `char` | The decimal mark of `SpreadsheetColumnKind.Number` cells, `.` or `,`. The other character is treated as a thousands separator and removed. |
+| `DecimalSeparator` (init) | `char` | The decimal mark of `SpreadsheetColumnKind.Number` cells, `.` or `,`. The other character is accepted as a thousands separator only between groups of three digits, so `12,50` is rejected when the mark is `.`. |
 | `DefaultValue` (init) | `object?` | The value used for empty cells. It only applies when `SpreadsheetColumnSchema.HasDefault` is `true`. |
 | `Description` (init) | `string?` | Help text for your own UI. The importer and the built-in component do not read it. |
 | `Editable` (init) | `bool` | Whether the built-in component lets the user edit this column's cells in the review table. `SpreadsheetImporter.EditCell` ignores it. |
@@ -105,7 +105,7 @@ The headless import engine. It loads delimited text or a prepared workbook, find
 | `ClearSelection()` | `void` | Empties the selection. |
 | `DiscardRows(IEnumerable<int> rowIndexes)` | `void` | Leaves rows out of the import (reason `SpreadsheetDiscardReason.Manual`) and clears the selection. |
 | `EditCell(int rowIndex, string fieldKey, string text)` | `void` | Replaces the text of one cell and revalidates. The edit applies in the importer only and never changes the source file. It also clears a server rejection of that row. |
-| `ExportInvalidRowsCsv()` | `string` | Builds a CSV of the rows with errors so users can fix them in their own tool. |
+| `ExportInvalidRowsCsv()` | `string` | Builds a CSV of the rows with errors so users can fix them in their own tool and import the file again. |
 | `ExportTemplateCsv()` | `string` | Builds a CSV template for users to fill in: a header row and an example row for every column without `SpreadsheetColumnSchema.From`. |
 | `GetSteps()` | `IReadOnlyList<SpreadsheetStepStatus>` | Returns the five wizard steps (file, columns, values, review, submit) with their current state. |
 | `GoToStep(string key)` | `void` | Jumps back to an earlier step. Forward jumps and skipped steps are ignored. |
