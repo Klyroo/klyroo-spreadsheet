@@ -407,7 +407,9 @@ public abstract partial class SpreadsheetImporter
                     if (ruleFailure is not null)
                     {
                         // The rule could not decide, so the row cannot be trusted whatever the level of the rule: it is blocked like a row the host's setter refuses.
-                        rowIssues.Add(new SpreadsheetRowIssue(null, "row.failed", SpreadsheetIssueLevel.Error, ruleFailure));
+                        var failed = new SpreadsheetRowIssue(col.Key, "row.failed", SpreadsheetIssueLevel.Error, ruleFailure);
+                        rowIssues.Add(failed);
+                        fieldIssue ??= failed;
                         continue;
                     }
                     if (timedOut)

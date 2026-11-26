@@ -121,6 +121,9 @@ public sealed class HostExceptionTests
         Assert.Empty(importer.AllRows[0].Issues);
         var issue = Assert.Single(importer.AllRows[1].Issues);
         Assert.Equal("row.failed", issue.Code);
+        Assert.Equal("Qty", issue.Field);
+        Assert.Same(issue, importer.AllRows[1].Cells["Qty"].Issue);
+        Assert.Null(importer.AllRows[1].Cells["Name"].Issue);
         Assert.Equal(SpreadsheetIssueLevel.Error, issue.Level);
         Assert.Contains("Cannot check this quantity", issue.Message, StringComparison.Ordinal);
         Assert.False(importer.AllRows[1].Importable);
