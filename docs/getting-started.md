@@ -1,6 +1,8 @@
 # Getting started
 
-In this tutorial you import a small price list: first from a console app with `Klyroo.Spreadsheet.Core`, then through the Blazor wizard. It takes about ten minutes and needs the .NET 10 SDK.
+In this tutorial you import a small price list: first from a console app with `Klyroo.Spreadsheet.Core`, then through the Blazor wizard. It takes about ten minutes.
+
+Check the [prerequisites](../README.md#prerequisites) first: the .NET 10 SDK, and for the components a Blazor app with Klyroo.UI set up.
 
 ## 1. Install
 
