@@ -293,7 +293,7 @@ public sealed record SpreadsheetValueQuestion(
 
 /// <summary>A problem or note about a row or one of its cells.</summary>
 /// <param name="Field">The column key the issue relates to, or <see langword="null"/> for the whole row.</param>
-/// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c>, <c>row.failed</c> (the host's factory, setter or <c>ValidateRow</c> threw, the message is the exception's) and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
+/// <param name="Code">A stable identifier. Built-in codes are <c>required</c>, <c>number</c>, <c>boolean</c>, <c>date</c>, <c>text</c>, <c>value.unknown</c>, <c>value.not-found</c>, <c>value.skipped</c>, <c>row.duplicate</c>, <c>row.exists</c>, <c>row.failed</c> (the host's factory, setter, rule predicate or <c>ValidateRow</c> threw, the message is the exception's) and <c>server</c>, plus the code of each failed <see cref="SpreadsheetRule"/>.</param>
 /// <param name="Level">The severity.</param>
 /// <param name="Message">The text of the issue in English. <c>KlySpreadsheetImport</c> shows it as it is when <paramref name="Args"/> is <see langword="null"/>.</param>
 /// <param name="Args">Set for the messages the library writes itself: the values the message contains (the cell text of a <c>number</c> issue, the row number of a <c>row.duplicate</c> issue), possibly none. With it, the component shows the message of the user's locale for the <paramref name="Code"/>, see <c>SpreadsheetTexts</c>. <see langword="null"/> for a message you wrote (a rule with your own text, <c>ValidateRow</c>, a server rejection), which is never replaced.</param>
@@ -1299,17 +1299,24 @@ public abstract partial class SpreadsheetImporter
         _ => null,
     };
 
-    // A rule that makes a regular expression time out (RegexMatchTimeoutException) fails instead of aborting the import.
-    private static bool RunRule(SpreadsheetRule rule, object? value, out bool timedOut)
+    // A rule that makes a regular expression time out (RegexMatchTimeoutException) fails instead of aborting the import. A predicate of the host
+    // that throws fails the cell too: failure carries its message, and the importer turns it into a row.failed issue like a throwing setter.
+    private static bool RunRule(SpreadsheetRule rule, object? value, out bool timedOut, out string? failure)
     {
+        timedOut = false;
+        failure = null;
         try
         {
-            timedOut = false;
             return rule.Check(value);
         }
         catch (RegexMatchTimeoutException)
         {
             timedOut = true;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            failure = ex.Message;
             return false;
         }
     }
@@ -1326,7 +1333,7 @@ public abstract partial class SpreadsheetImporter
         if (!TryParseCell(col, sample, invariantNumbers, out var val, out _, out _, out _)) return false;
         if (col.Rules is { Count: > 0 })
         {
-            return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _));
+            return col.Rules.All(r => r.Level != SpreadsheetIssueLevel.Error || RunRule(r, val, out _, out _));
         }
         return true;
     }

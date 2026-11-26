@@ -7,6 +7,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // Defects found in review of the async checks, the submit, the saved mappings, the exports and the live region.
+[PinCulture]
 public sealed class ReviewFixTests : BunitContext
 {
     public ReviewFixTests()

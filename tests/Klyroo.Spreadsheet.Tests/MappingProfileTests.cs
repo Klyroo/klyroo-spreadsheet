@@ -7,6 +7,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // A saved mapping: headers to columns and answers to unknown values, stored as JSON and applied to the next file with the same headers.
+[PinCulture]
 public sealed class MappingProfileTests : BunitContext
 {
     public MappingProfileTests()

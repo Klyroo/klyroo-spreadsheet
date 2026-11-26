@@ -403,7 +403,13 @@ public abstract partial class SpreadsheetImporter
                         fieldIssue ??= skipped;
                         continue;
                     }
-                    var passed = RunRule(rule, parsedVal, out var timedOut);
+                    var passed = RunRule(rule, parsedVal, out var timedOut, out var ruleFailure);
+                    if (ruleFailure is not null)
+                    {
+                        // The rule could not decide, so the row cannot be trusted whatever the level of the rule: it is blocked like a row the host's setter refuses.
+                        rowIssues.Add(new SpreadsheetRowIssue(null, "row.failed", SpreadsheetIssueLevel.Error, ruleFailure));
+                        continue;
+                    }
                     if (timedOut)
                     {
                         var count = _ruleTimeouts.GetValueOrDefault((col.Key, ruleIndex)) + 1;

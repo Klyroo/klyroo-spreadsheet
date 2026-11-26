@@ -8,6 +8,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // A rule whose matches keep timing out is stopped after a few timeouts, so a hostile file costs a few timeouts, not one per cell.
+[PinCulture]
 public sealed class RuleCircuitBreakerTests : BunitContext
 {
     private static readonly string Hostile = new string('a', 60) + "!";

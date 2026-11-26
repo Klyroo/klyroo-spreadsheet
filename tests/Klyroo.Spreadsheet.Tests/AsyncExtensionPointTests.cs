@@ -5,6 +5,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // The extension points that call the host: OnCreateOptionAsync, ValidateRowsAsync and LookupExistingRecordsAsync.
+[PinCulture]
 public sealed class AsyncExtensionPointTests : BunitContext
 {
     public AsyncExtensionPointTests()

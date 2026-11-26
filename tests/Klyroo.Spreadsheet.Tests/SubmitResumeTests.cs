@@ -5,6 +5,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // A failed or cancelled submit keeps what the host accepted, and a retry sends only the rest.
+[PinCulture]
 public sealed class SubmitResumeTests : BunitContext
 {
     public SubmitResumeTests()

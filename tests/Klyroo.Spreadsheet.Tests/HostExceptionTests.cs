@@ -15,7 +15,7 @@ public sealed class Fragile
     public int? Qty { get; set; }
 }
 
-// A host setter, factory or ValidateRow that throws is a row issue, never a failed load.
+// A host setter, factory, rule predicate or ValidateRow that throws is a row issue, never a failed load.
 public sealed class HostExceptionTests
 {
     private static SpreadsheetImporter<Fragile> Importer(Action<SpreadsheetSchemaBuilder<Fragile>>? extra = null) =>
@@ -104,5 +104,60 @@ public sealed class HostExceptionTests
 
         importer.RevertCell(0, "Name");
         Assert.True(importer.AllRows[0].Importable);
+    }
+
+    [Fact]
+    public void A_throwing_rule_predicate_is_a_row_issue_with_the_message_of_the_exception()
+    {
+        var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
+        {
+            sb.Column(r => r.Name);
+            sb.Column(r => r.Qty, c => c.Rule("positive", "Must be positive", v => v > 0 ? true : throw new InvalidOperationException("Cannot check this quantity")));
+        }));
+
+        importer.LoadText("Name,Qty\na,1\nb,-5\nc,3", "f.csv");
+
+        Assert.Equal(3, importer.AllRows.Count);
+        Assert.Empty(importer.AllRows[0].Issues);
+        var issue = Assert.Single(importer.AllRows[1].Issues);
+        Assert.Equal("row.failed", issue.Code);
+        Assert.Equal(SpreadsheetIssueLevel.Error, issue.Level);
+        Assert.Contains("Cannot check this quantity", issue.Message, StringComparison.Ordinal);
+        Assert.False(importer.AllRows[1].Importable);
+        Assert.Equal([0, 2], importer.ImportableRows.Select(r => r.Index));
+    }
+
+    [Fact]
+    public void A_throwing_rule_blocks_the_row_whatever_the_level_of_the_rule_and_does_not_hide_the_other_rules()
+    {
+        var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
+        {
+            sb.Column(r => r.Name, c => c
+                .Rule("soft", "Soft", v => v == "x" ? throw new InvalidOperationException("Soft rule broke") : true, SpreadsheetIssueLevel.Warning)
+                .Rule("long", "Too short", v => v!.Length > 3));
+            sb.Column(r => r.Qty);
+        }));
+
+        importer.LoadText("Name,Qty\nx,1", "f.csv");
+
+        var issues = importer.AllRows[0].Issues;
+        Assert.Contains(issues, i => i.Code == "row.failed" && i.Level == SpreadsheetIssueLevel.Error && i.Message.Contains("Soft rule broke", StringComparison.Ordinal));
+        Assert.Contains(issues, i => i.Code == "long");
+        Assert.False(importer.AllRows[0].Importable);
+    }
+
+    [Fact]
+    public void A_throwing_rule_does_not_fail_the_load_when_the_columns_are_guessed_from_the_values()
+    {
+        var importer = new SpreadsheetImporter<Fragile>(SpreadsheetSchema.For<Fragile>(sb =>
+        {
+            sb.Column(r => r.Name);
+            sb.Column(r => r.Qty, c => c.Rule("boom", "Boom", _ => throw new InvalidOperationException("always")));
+        }));
+
+        var load = Record.Exception(() => importer.LoadText("Name,Qty\na,1", "f.csv"));
+
+        Assert.Null(load);
+        Assert.Contains("always", Assert.Single(importer.AllRows[0].Issues).Message, StringComparison.Ordinal);
     }
 }

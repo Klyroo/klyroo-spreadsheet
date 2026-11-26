@@ -579,7 +579,7 @@ A problem or note about a row or one of its cells.
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `Args` (init) | `IReadOnlyList<string>?` | Set for the messages the library writes itself: the values the message contains (the cell text of a `number` issue, the row number of a `row.duplicate` issue), possibly none. With it, the component shows the message of the user's locale for the `Code`, see `SpreadsheetTexts`. `null` for a message you wrote (a rule with your own text, `ValidateRow`, a server rejection), which is never replaced. |
-| `Code` (init) | `string` | A stable identifier. Built-in codes are `required`, `number`, `boolean`, `date`, `text`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `row.failed` (the host's factory, setter or `ValidateRow` threw, the message is the exception's) and `server`, plus the code of each failed `SpreadsheetRule`. |
+| `Code` (init) | `string` | A stable identifier. Built-in codes are `required`, `number`, `boolean`, `date`, `text`, `value.unknown`, `value.not-found`, `value.skipped`, `row.duplicate`, `row.exists`, `row.failed` (the host's factory, setter, rule predicate or `ValidateRow` threw, the message is the exception's) and `server`, plus the code of each failed `SpreadsheetRule`. |
 | `Field` (init) | `string?` | The column key the issue relates to, or `null` for the whole row. |
 | `Level` (init) | `SpreadsheetIssueLevel` | The severity. |
 | `Message` (init) | `string` | The text of the issue in English. `KlySpreadsheetImport` shows it as it is when `Args` is `null`. |

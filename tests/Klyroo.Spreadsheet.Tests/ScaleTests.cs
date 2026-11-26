@@ -9,6 +9,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // Large files: the importer touches only the rows a change concerns, caches the lists it builds, and pages the review.
+[PinCulture]
 public sealed class ScaleTests : BunitContext
 {
     private const int Rows = 50_000;

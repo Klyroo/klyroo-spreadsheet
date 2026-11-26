@@ -6,6 +6,7 @@ using Xunit;
 namespace Klyroo.Spreadsheet.Tests;
 
 // The template and the invalid rows are offered as downloads: through the browser module, or through OnDownload.
+[PinCulture]
 public sealed class DownloadTests : BunitContext
 {
     private const string Module = "./_content/Klyroo.Spreadsheet/klyroo-spreadsheet.js";
