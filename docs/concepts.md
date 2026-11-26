@@ -65,7 +65,7 @@ The rows are derived from three inputs: the loaded sheet, the schema, and the us
 
 ## Render modes and threading
 
-The engine has no notion of a render mode. The component handles clicks through Blazor events, so it needs an interactive mode, and the component itself makes no JavaScript calls. The importer raises `Changed` synchronously on the thread that called the method, and the component re-renders through `InvokeAsync`, so changes made from your own event handlers are safe. A `SpreadsheetImporter` is not thread-safe: keep one per user and per import (a page field, a scoped service), and do not share one between circuits or requests. See [Platforms](platforms.md) for what runs where.
+The engine has no notion of a render mode. The component handles clicks through Blazor events, so it needs an interactive mode. Its one JavaScript call is the browser download of the template and of the invalid rows, made through a small module loaded on demand, and `OnDownload` replaces it. The importer raises `Changed` synchronously on the thread that called the method, and the component re-renders through `InvokeAsync`, so changes made from your own event handlers are safe. A `SpreadsheetImporter` is not thread-safe: keep one per user and per import (a page field, a scoped service), and do not share one between circuits or requests. See [Platforms](platforms.md) for what runs where.
 
 ## Errors
 

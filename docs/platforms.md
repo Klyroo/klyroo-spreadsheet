@@ -12,7 +12,7 @@ What runs where. Everything below comes from the project files (`IsTrimmable`, `
 
 ## Blazor render modes
 
-The engine works in every mode, since it is plain C#. The component `KlySpreadsheetImport` reacts to clicks and input through Blazor events and makes no JavaScript calls of its own, so what matters is whether the page is interactive.
+The engine works in every mode, since it is plain C#. The component `KlySpreadsheetImport` reacts to clicks and input through Blazor events, so what matters is whether the page is interactive. Its only JavaScript is a download helper (`_content/Klyroo.Spreadsheet/klyroo-spreadsheet.js`) that it imports the first time the user downloads the template or the invalid rows.
 
 | Render mode | Component | Notes |
 | :--- | :--- | :--- |
@@ -23,7 +23,7 @@ The engine works in every mode, since it is plain C#. The component `KlySpreadsh
 
 Register the services with `builder.Services.AddKlyrooSpreadsheet()`. It calls `AddKlyrooUi()`, which the base class of the component needs, so `Klyroo.UI` configuration (theme, locale) is set through `AddKlyrooUi` options as the [Klyroo.UI](https://github.com/klyroo/klyroo-ui) documentation describes.
 
-Reading a file is your job. `OpenReadStream` allows 500 KB by default and throws for a larger file, so pass a `maxAllowedSize` that fits your data, as the samples do with `5 * 1024 * 1024`. The importer keeps the whole file text and every parsed row in memory, and it re-parses all rows after each change, so on Interactive Server size the limit with the number of concurrent circuits in mind.
+Reading a file is your job. `OpenReadStream` allows 500 KB by default and throws for a larger file, so pass a `maxAllowedSize` that fits your data, as the samples do with `5 * 1024 * 1024`. The importer keeps the whole file text and every parsed row in memory (the component caps an import at 10,000 rows by default, see `MaxRows`), so on Interactive Server size the limit with the number of concurrent circuits in mind.
 
 ## .NET MAUI Blazor Hybrid
 
@@ -35,7 +35,7 @@ using Klyroo.Spreadsheet;
 builder.Services.AddKlyrooSpreadsheet();
 ```
 
-Then add the three stylesheet links of the [README](../README.md#installation) to `wwwroot/index.html` and use the component in a Razor page of the app. The file step uses Blazor's `InputFile`, which opens the platform file picker in a hybrid app; you can also read a file with the MAUI `FilePicker` and pass its stream to `LoadFileAsync`. This repository has not been run on a device, so test the file-picking flow on each platform you ship.
+Then add the three stylesheet links of the [README](../README.md#installation) to `wwwroot/index.html` and use the component in a Razor page of the app. The file step uses Blazor's `InputFile`, which opens the platform file picker in a hybrid app; you can also read a file with the MAUI `FilePicker` and pass its stream to `LoadFileAsync`. The browser download of the template and the invalid rows (a Blob and a link click in JavaScript) is not something to rely on in a web view: set `OnDownload` and save the file with the platform, for example by writing it to the app's cache folder and handing it to `Share.Default.RequestAsync`. This repository has not been run on a device, so test the file-picking flow on each platform you ship.
 
 If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreadsheet.Core` only and bind your view models to a `SpreadsheetImporter`: its `Changed` event and its read-only properties are enough to drive a custom UI.
 

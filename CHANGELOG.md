@@ -20,6 +20,8 @@ All notable changes to this project are documented in this file. The format foll
 
 - Async extension points, each cancellable and batched, with the synchronous ones kept: `SpreadsheetColumnSchema.OnCreateOptionAsync`, `SpreadsheetSchema.ValidateRowsAsync` (with `ValidateBatchSize` and `SpreadsheetIndexedIssue`) and `SpreadsheetSchema.LookupExistingRecordsAsync` (with `LookupBatchSize`, an alternative to loading `ExistingRecords`). `SpreadsheetImporter.ValidateAsync`, `CancelValidation`, `ValidationStatus`, `ValidationError`, `HasAsyncChecks` and `NeedsAsyncValidation` run the two checks on the rows not checked yet; `SubmitAsync` runs them first. The component runs them when the review opens, shows their state and offers Cancel and Check again.
 
+- Downloads: `KlySpreadsheetImport` has a Download a template button on the file step and a Download the invalid rows button on the review step. In a browser they save the CSV through a small JavaScript module (`klyroo-spreadsheet.js`, `downloadText`); the `OnDownload` callback (`SpreadsheetDownload`: file name, content, media type) takes the file instead, for .NET MAUI Blazor Hybrid or custom storage.
+
 ### Changed
 
 - `SubmitAsync` no longer starts `ImportedCount` again from zero and resends every importable row: it resumes with the rows that were not accepted (a second call after a complete submit sends nothing; `ResetSubmit()` sends everything again). The rejections of the batches that finished are kept when a later batch throws. The old behavior was the bug: a retry after a failed batch sent the accepted batches again.

@@ -325,6 +325,7 @@ Goal: validate rows with data only your server has, without loading it all in me
 Three callbacks accept a `CancellationToken` and are called in batches. Their synchronous counterparts keep working.
 
 ```csharp
+// catalog, suppliers and categories stand for your own services.
 var schema = new SpreadsheetSchema
 {
     RowKeyField = "sku",
@@ -448,6 +449,21 @@ Goal: give users a file to fill in, and give them back the rows they must fix.
 ```csharp
 File.WriteAllText("template.csv", importer.ExportTemplateCsv());
 File.WriteAllText("rejected.csv", importer.ExportInvalidRowsCsv());
+```
+
+The wizard offers both. The file step has a Download a template button, and the review step has a Download the invalid rows button as long as some row is invalid. In a browser they save the file through a small JavaScript module (`downloadText`, imported the first time you click), named `{schema key}-template.csv` and `{schema key}-invalid-rows.csv`. Set `OnDownload` to take the file yourself, which is what a .NET MAUI Blazor Hybrid app should do, or to store it elsewhere. The component then makes no JavaScript call:
+
+```razor
+<KlySpreadsheetImport Importer="_importer" OnDownload="SaveAsync" />
+
+@code {
+    private async Task SaveAsync(SpreadsheetDownload file)
+    {
+        var path = Path.Combine(FileSystem.CacheDirectory, file.FileName);   // MAUI
+        await File.WriteAllTextAsync(path, file.Content);
+        await Share.Default.RequestAsync(new ShareFileRequest { File = new ShareFile(path) });
+    }
+}
 ```
 
 `ExportTemplateCsv` writes a header row and an example row (`Example` of each column) for every column that is not computed with `From`. `ExportInvalidRowsCsv` lists the rows that are invalid and not discarded, with an `Issues` column. Both start with a byte order mark so Excel opens them as UTF-8. The invalid rows export has one column per schema column, in schema order, headed by the file header it was read from, so the user can fix the cells and import the file again.
