@@ -41,6 +41,8 @@ public sealed class NumberParsingAndExportTests
     [InlineData("1,234.50", ',')]
     [InlineData("12.5", ',')]
     [InlineData("12,5,0", ',')]
+    [InlineData("0,125", '.')]
+    [InlineData("0.125", ',')]
     public void Number_cells_reject_a_misplaced_thousands_separator(string text, char separator)
     {
         var row = ImportPrice(text, separator);

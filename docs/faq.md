@@ -27,7 +27,7 @@ A suggestion needs all of these: the column is required with no default and has 
 
 **Numbers are rejected**
 
-A `Number` column uses one convention. With the default `DecimalSeparator = '.'`, a comma is accepted only as a thousands separator between groups of three digits, so `1,234.50` reads as `1234.5` and `12,50` raises a `number` issue. With `DecimalSeparator = ','` the roles swap: `1.234,50` is accepted and `1,234.50` is rejected. Set the separator that matches your users' files, or use `CustomParse` to normalize the text yourself. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator = ','`. Percent signs and currency symbols are not accepted.
+A `Number` column uses one convention. With the default `DecimalSeparator = '.'`, a comma is accepted only as a thousands separator between groups of three digits, so `1,234.50` reads as `1234.5` while `12,50` and `0,125` raise a `number` issue. A value such as `1,500` is still read as `1500`: three digits after the comma look exactly like a thousands group. With `DecimalSeparator = ','` the roles swap: `1.234,50` is accepted and `1,234.50` is rejected. Set the separator that matches your users' files, or use `CustomParse` to normalize the text yourself. Spaces, non-breaking spaces and apostrophes are always removed, so `1 234,50` and `1'234,50` work with `DecimalSeparator = ','`. Percent signs and currency symbols are not accepted.
 
 **Dates are rejected**
 

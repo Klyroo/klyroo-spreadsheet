@@ -492,8 +492,8 @@ public sealed record SpreadsheetStepStatus(
 /// </remarks>
 public sealed class SpreadsheetImporter
 {
-    private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
-    private static readonly Regex CommaDecimalNumber = new(@"^[+-]?(?:\d{1,3}(?:\.\d{3})+|\d*)(?:,\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
+    private static readonly Regex DotDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:,\d{3})+|\d*)(?:\.\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
+    private static readonly Regex CommaDecimalNumber = new(@"^[+-]?(?:[1-9]\d{0,2}(?:\.\d{3})+|\d*)(?:,\d*)?(?:[eE][+-]?\d+)?$", RegexOptions.CultureInvariant);
 
     /// <summary>How many leading rows of a sheet are scanned to find the header row.</summary>
     public const int HeaderScanRows = 20;
