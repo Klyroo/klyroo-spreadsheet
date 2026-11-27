@@ -727,7 +727,7 @@
 
             @* Table + Optional Row Inspector *@
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                <div class="@(Importer.InspectedRow is not null ? "lg:col-span-8" : "lg:col-span-12") overflow-x-auto rounded-(--klyroo-radius) border border-(--klyroo-border)"
+                <div class="@(Importer.InspectedRow is not null ? "lg:col-span-8" : "lg:col-span-12") overflow-x-auto rounded-(--klyroo-radius) border border-(--klyroo-border) bg-(--klyroo-bg) bg-no-repeat [background-image:linear-gradient(to_right,var(--klyroo-bg)_35%,transparent),linear-gradient(to_left,var(--klyroo-bg)_35%,transparent),linear-gradient(to_right,color-mix(in_oklab,var(--klyroo-text)_30%,transparent),transparent),linear-gradient(to_left,color-mix(in_oklab,var(--klyroo-text)_30%,transparent),transparent)] [background-position:left_top,right_top,left_top,right_top] [background-size:2rem_100%,2rem_100%,1.25rem_100%,1.25rem_100%] [background-attachment:local,local,scroll,scroll]"
                      data-slot="spreadsheet-table">
                     <table class="min-w-full text-xs">
                         <thead class="border-b border-(--klyroo-border) bg-(--klyroo-bg-muted) font-semibold text-(--klyroo-text-muted)">
