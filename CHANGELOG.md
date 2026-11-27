@@ -55,6 +55,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+- The review table shows an edge shadow on the side where columns are out of view, and the drop zone text and the file summary are balanced instead of ending on a lone word.
 - Import speed: reading a number cell into a typed column was slower than it had been with untyped rows, because the text was scanned three times (a regular expression, a digit split for the exactness check, a second split and a read back through the text of the value) and each pass allocated. A cell is now cleaned, checked and read in one pass over a stack buffer, with no regular expression and no intermediate string, and the exactness check of a decimal only reads the value back when the text has more than 28 digits. Parsed values travel in an array in column order instead of a dictionary per row, and the row key is found by position. The results are the same for every cell: a randomized comparison of the new and the old reading over several million cell texts found no difference, and `NumberShapeTests` keeps the separators, the groups of three and the limits of each type. On the benchmark of 10,000 rows, measured back to back, the read went from 52.1 ms to 27.3 ms (the untyped importer took 36.7 ms in the same runs) and the allocation from 17.6 MB to 12.4 MB (14.2 MB untyped).
 
 - The tests that assert the English texts of the component pin `en-US` (`PinCulture`), so the suite passes on a machine whose language is French (11 tests failed with `LANG=fr_FR.UTF-8`). No library change.
