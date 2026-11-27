@@ -34,6 +34,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
+- The ecosystem table of the README describes Klyroo.Display by what it keeps (code highlighting, secret and file list components, media player controls and file preview), since its read-only display blocks are typed components of Klyroo.UI.
 - `Klyroo.Spreadsheet.Core` is about 4.5 KB smaller than it would be with the typed importer as it was: the internal `CompoundEntry` and `UnknownEntry` are plain types instead of records, and so is the new internal `NumberParts`, because nothing compared, printed or deconstructed them and each record added ten members to the assembly. No public API changes.
 
 - **Breaking:** the schema, the columns, the rows and every callback are strongly typed by a row class, and dictionary row data is gone from the public API.
