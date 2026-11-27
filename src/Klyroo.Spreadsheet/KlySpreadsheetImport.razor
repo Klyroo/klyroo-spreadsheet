@@ -303,7 +303,7 @@
                                aria-label="@T.ChooseFileLabel"
                                data-slot="spreadsheet-file-input"
                                OnChange="OnFileSelectedAsync" />
-                    <span class="m-0 font-semibold text-(--klyroo-text-highlighted)">@(_loadingFile ? T.ReadingFile : T.DropFileHere)</span>
+                    <span class="m-0 font-semibold text-balance text-(--klyroo-text-highlighted)">@(_loadingFile ? T.ReadingFile : T.DropFileHere)</span>
                     <span class="m-0 text-xs text-(--klyroo-text-muted)">
                         @string.Join(", ", Importer.Schema.Accept)
                         @(Importer.EffectiveMaxRows is { } mr ? $" · {T.UpToRows(mr)}" : "")
@@ -385,7 +385,7 @@
                         </span>
                         <div class="flex flex-col">
                             <span class="font-semibold text-(--klyroo-text-highlighted)" data-slot="spreadsheet-file-name">@Importer.FileName</span>
-                            <span class="text-xs text-(--klyroo-text-muted)" data-slot="spreadsheet-file-summary">
+                            <span class="text-xs text-balance text-(--klyroo-text-muted)" data-slot="spreadsheet-file-summary">
                                 @T.FileSummary(Importer.AllRows.Count, Importer.Sheets.Count, Importer.HeaderRowNumber)
                             </span>
                         </div>
