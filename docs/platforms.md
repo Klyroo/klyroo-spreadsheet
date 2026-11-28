@@ -37,7 +37,11 @@ builder.Services.AddKlyrooSpreadsheet();
 
 Then add the three stylesheet links of the [README](../README.md#installation) to `wwwroot/index.html` and use the component in a Razor page of the app. The file step uses Blazor's `InputFile`, which opens the platform file picker in a hybrid app; you can also read a file with the MAUI `FilePicker` and pass its stream to `LoadFileAsync`. The browser download of the template and the invalid rows (a Blob and a link click in JavaScript) is not something to rely on in a web view: set `OnDownload` and save the file with the platform, for example by writing it to the app's cache folder and handing it to `Share.Default.RequestAsync`. This repository has not been run on a device, so test the file-picking flow on each platform you ship.
 
-If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreadsheet.Core` only and bind your view models to a `SpreadsheetImporter<TRow>`: its `Changed` event and its read-only properties are enough to drive a custom UI.
+### Native C# MAUI without a web view
+
+If your MAUI app uses XAML pages and no `BlazorWebView`, install `Klyroo.Spreadsheet.Core` alone if you want to bind your own view models to `SpreadsheetImporter<TRow>`: its `Changed` event and read-only properties are enough to drive a custom UI.
+
+The repository also includes [`Klyroo.Spreadsheet.Maui`](../src/Klyroo.Spreadsheet.Maui/README.md) (`src/Klyroo.Spreadsheet.Maui`): the native .NET MAUI five-step `KlySpreadsheetImport` wizard over `Klyroo.Spreadsheet.Core`, drawn with the design tokens of `Klyroo.UI.Maui` and no WebView. It requires the MAUI workload and a sibling checkout of `klyroo-ui`, and is built and unit-tested by `.github/workflows/maui.yml`.
 
 ## Trimming and NativeAOT
 

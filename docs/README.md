@@ -13,7 +13,7 @@ Klyroo.Spreadsheet imports CSV, TSV, Excel (`.xlsx`, `.xls`) and pasted data int
 ## Reference
 
 - [API reference](api-reference.md): every public type and member, generated from the XML documentation.
-- [Platforms](platforms.md): render modes, .NET MAUI Blazor Hybrid, trimming and NativeAOT.
+- [Platforms](platforms.md): render modes, .NET MAUI (Blazor Hybrid and native views), trimming and NativeAOT.
 - [FAQ](faq.md): troubleshooting, known limitations and frequent questions.
 
 ## Explanation

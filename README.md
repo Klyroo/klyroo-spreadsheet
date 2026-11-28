@@ -29,6 +29,8 @@ User files rarely match your model: the header is on row 3, a column is named di
 | [`Klyroo.Spreadsheet.Core`](https://www.nuget.org/packages/Klyroo.Spreadsheet.Core) | The import engine: parsing, matching, validation and submit. No UI dependency. |
 | [`Klyroo.Spreadsheet`](https://www.nuget.org/packages/Klyroo.Spreadsheet) | The `KlySpreadsheetImport` wizard for Blazor and .NET MAUI Blazor Hybrid, built on [Klyroo.UI](https://github.com/klyroo/klyroo-ui). Includes the Core package. |
 
+For native .NET MAUI apps without a `BlazorWebView`, the repository also includes [`Klyroo.Spreadsheet.Maui`](src/Klyroo.Spreadsheet.Maui/README.md) (built from source over `Klyroo.Spreadsheet.Core` and `Klyroo.UI.Maui`).
+
 ## Prerequisites
 
 To use the library in an app:
@@ -177,6 +179,7 @@ Klyroo is a family of independent .NET libraries that compose. Each one has its 
 | [Klyroo.Display](https://github.com/klyroo/klyroo-display) | Code highlighting, secret and file list components, media player controls and file preview |
 | **[Klyroo.Spreadsheet](https://github.com/klyroo/klyroo-spreadsheet)** | Import wizard for CSV, TSV, Excel and pasted data, with column and value mapping |
 | [Klyroo.Agent](https://github.com/klyroo/klyroo-agent) | Bridge that lets AI agents read and act on Klyroo forms, dashboards and imports |
+| [Klyroo.Hotkey](https://github.com/klyroo/klyroo-hotkey) | Server-side .NET client for Hotkey cloud browsers, human handoffs and signed webhooks |
 | [Klyroo.Stack](https://github.com/klyroo/klyroo-stack) | Meta-package, MCP documentation server and `dotnet new` templates |
 
 ## Contributing
