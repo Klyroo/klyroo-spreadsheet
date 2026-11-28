@@ -13,29 +13,31 @@
     <div class="@RootClass" data-slot="spreadsheet-import" data-step="@currentStep.Key" @attributes="AdditionalAttributes">
         @* Wizard Header *@
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-(--klyroo-border) pb-3" data-slot="spreadsheet-header">
-            <div class="flex items-center gap-2.5">
+            <div class="flex flex-wrap items-center gap-2.5">
                 <h2 class="m-0 text-base font-bold text-(--klyroo-text-highlighted)" data-slot="spreadsheet-title">@(Title ?? T.Import)</h2>
                 @if (Importer.FileLoaded && !string.IsNullOrEmpty(Importer.FileName))
                 {
-                    <span class="rounded-full bg-(--klyroo-bg-muted) px-2.5 py-0.5 text-xs font-medium text-(--klyroo-text-muted)"
+                    <span class="whitespace-nowrap rounded-full bg-(--klyroo-bg-muted) px-2.5 py-0.5 text-xs font-medium text-(--klyroo-text-muted)"
                           data-slot="spreadsheet-file-pill">@Importer.FileName</span>
                 }
             </div>
 
             @if (Wizard)
             {
-                <ol class="m-0 flex list-none flex-wrap items-center gap-2 p-0" data-slot="spreadsheet-stepper">
+                @* One row when the wizard is wide enough for every step; a grid of two or three columns when it is narrow, the last step taking the rest of its row, so no step sits alone on a line. *@
+                <div class="@@container min-w-0 flex-[1_1_18rem]">
+                <ol class="m-0 grid list-none grid-cols-2 gap-2 p-0 @@md:grid-cols-3 @@3xl:flex @@3xl:flex-wrap @@3xl:items-center @@3xl:justify-end" data-slot="spreadsheet-stepper">
                     @foreach (var step in steps)
                     {
                         var isCurrent = step.State == "current";
                         var isDone = step.State == "done";
                         var isSkipped = step.State == "skipped";
                         var isEarlier = step.Position < currentStep.Position;
-                        <li>
+                        <li class="flex last:odd:col-span-2">
                             <button type="button"
                                     disabled="@(!(isDone || (isSkipped && isEarlier)))"
                                     aria-current="@(isCurrent ? "step" : null)"
-                                    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold @(isCurrent ? "bg-(--klyroo-primary) text-(--klyroo-primary-contrast)" : isDone ? "bg-(--klyroo-success)/15 text-(--klyroo-success-text) hover:opacity-90" : "bg-(--klyroo-bg-muted) text-(--klyroo-text-muted)") disabled:cursor-default"
+                                    class="inline-flex w-full flex-wrap items-center gap-x-1.5 rounded-full px-3 py-1 text-xs font-semibold @@3xl:w-auto @(isCurrent ? "bg-(--klyroo-primary) text-(--klyroo-primary-contrast)" : isDone ? "bg-(--klyroo-success)/15 text-(--klyroo-success-text) hover:opacity-90" : "bg-(--klyroo-bg-muted) text-(--klyroo-text-muted)") disabled:cursor-default"
                                     data-slot="spreadsheet-step-item"
                                     data-key="@step.Key"
                                     data-state="@step.State"
@@ -44,12 +46,13 @@
                                 <span>@T.StepTitle(step.Key, step.Label)</span>
                                 @if (isSkipped)
                                 {
-                                    <span class="text-[10px] opacity-75">@T.NothingToDo</span>
+                                    <span class="whitespace-nowrap text-[11px] font-medium opacity-80">@T.NothingToDo</span>
                                 }
                             </button>
                         </li>
                     }
                 </ol>
+                </div>
             }
         </header>
 
