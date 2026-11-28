@@ -8,18 +8,6 @@ internal static class SheetUi
     private const float Tint = 0.10f;
     private const float StrongTint = 0.15f;
 
-    public static void SetThemeColor(this BindableObject target, BindableProperty property, KlyThemeColor color) =>
-        target.SetAppThemeColor(property, color.Light, color.Dark);
-
-    public static void SetStroke(this Border border, KlyThemeColor color) =>
-        border.SetAppTheme<Brush>(Border.StrokeProperty, new SolidColorBrush(color.Light), new SolidColorBrush(color.Dark));
-
-    public static void SetRadius(this Border border, double radius) =>
-        border.StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(radius) };
-
-    /// <summary>The corner radius of a fraction of <see cref="KlyTheme.Radius"/>, as <c>rounded-(--klyroo-radius)</c> and its variants on the web.</summary>
-    public static double RadiusOf(double fraction) => KlyTheme.Radius * fraction;
-
     /// <summary>The text color of a semantic color on the page background.</summary>
     public static KlyThemeColor TextOf(KlyColor color) => KlyTheme.Resolve(color).Text;
 
@@ -93,7 +81,7 @@ internal static class SheetUi
     public static Border Card(View content, double padding = 12, KlyThemeColor? fill = null)
     {
         var card = new Border { StrokeThickness = 1, Padding = new Thickness(padding), Content = content, HorizontalOptions = LayoutOptions.Fill };
-        card.SetRadius(RadiusOf(1));
+        card.SetRadius(KlyTheme.RadiusOf(1));
         card.SetStroke(KlyTheme.Border);
         if (fill is { } color) card.SetThemeColor(VisualElement.BackgroundColorProperty, color);
         return card;
@@ -103,7 +91,7 @@ internal static class SheetUi
     public static Border Notice(string? text, KlyColor tone, bool announce = true)
     {
         var box = new Border { StrokeThickness = 0, Padding = new Thickness(12, 8), HorizontalOptions = LayoutOptions.Fill };
-        box.SetRadius(RadiusOf(1));
+        box.SetRadius(KlyTheme.RadiusOf(1));
         box.SetThemeColor(VisualElement.BackgroundColorProperty, TintOf(tone, strong: tone != KlyColor.Error));
         box.Content = Text(text, 12, TextOf(tone));
         SemanticProperties.SetDescription(box, text);

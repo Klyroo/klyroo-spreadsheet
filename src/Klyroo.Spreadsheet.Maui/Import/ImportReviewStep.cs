@@ -157,7 +157,7 @@ internal sealed class ImportReviewStep : VerticalStackLayout, IImportStep
                 _ => texts.TabAll(importer.AllRows.Count),
             };
             var chip = new Border { StrokeThickness = 0, Padding = new Thickness(10, 0), MinimumHeightRequest = 40, Margin = new Thickness(0, 0, 4, 4), Content = SheetUi.Text(label, 12, active ? KlyTheme.TextHighlighted : KlyTheme.TextMuted, FontAttributes.Bold, LineBreakMode.NoWrap) };
-            chip.SetRadius(SheetUi.RadiusOf(1));
+            chip.SetRadius(KlyTheme.RadiusOf(1));
             ((Label)chip.Content).VerticalOptions = LayoutOptions.Center;
             if (active) chip.SetThemeColor(VisualElement.BackgroundColorProperty, KlyTheme.BackgroundMuted);
             SemanticProperties.SetDescription(chip, label);
@@ -237,7 +237,7 @@ internal sealed class ImportReviewStep : VerticalStackLayout, IImportStep
         }));
         row.Add(SheetUi.Button(texts.ClearSelection, ButtonVariant.Link, KlyColor.Neutral, importer.ClearSelection));
         var bar = new Border { StrokeThickness = 0, Padding = new Thickness(12, 4), Content = row, HorizontalOptions = LayoutOptions.Fill };
-        bar.SetRadius(SheetUi.RadiusOf(1));
+        bar.SetRadius(KlyTheme.RadiusOf(1));
         bar.SetThemeColor(VisualElement.BackgroundColorProperty, KlyTheme.BackgroundMuted);
         SelectionBar = bar;
         return bar;
@@ -338,7 +338,7 @@ internal sealed class ImportReviewStep : VerticalStackLayout, IImportStep
         stack.Add(BuildPager(importer, texts));
 
         var card = new Border { StrokeThickness = 1, Padding = 0, Content = stack, HorizontalOptions = LayoutOptions.Fill };
-        card.SetRadius(SheetUi.RadiusOf(1));
+        card.SetRadius(KlyTheme.RadiusOf(1));
         card.SetStroke(KlyTheme.Border);
         return card;
     }
@@ -550,7 +550,7 @@ internal sealed class ImportReviewStep : VerticalStackLayout, IImportStep
                 var label = SheetUi.NewLabel(12, SheetUi.TextOf(KlyColor.Error));
                 label.FormattedText = line;
                 var box = new Border { StrokeThickness = 0, Padding = new Thickness(10, 6), Content = label, HorizontalOptions = LayoutOptions.Fill };
-                box.SetRadius(SheetUi.RadiusOf(0.5));
+                box.SetRadius(KlyTheme.RadiusOf(0.5));
                 box.SetThemeColor(VisualElement.BackgroundColorProperty, SheetUi.TintOf(KlyColor.Error));
                 issues.Add(box);
             }

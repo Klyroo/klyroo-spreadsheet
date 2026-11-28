@@ -116,7 +116,7 @@ internal sealed class ImportSubmitStep : VerticalStackLayout, IImportStep
         row.Add(again);
         row.Add(see);
         var box = new Border { StrokeThickness = 0, Padding = new Thickness(12, 4), Content = row, HorizontalOptions = LayoutOptions.Fill };
-        box.SetRadius(SheetUi.RadiusOf(1));
+        box.SetRadius(KlyTheme.RadiusOf(1));
         box.SetThemeColor(VisualElement.BackgroundColorProperty, SheetUi.TintOf(KlyColor.Error));
         RejectedBox = box;
         return box;

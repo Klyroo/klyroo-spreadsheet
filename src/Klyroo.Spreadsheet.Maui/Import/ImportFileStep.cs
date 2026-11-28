@@ -63,7 +63,7 @@ internal sealed class ImportFileStep : VerticalStackLayout, IImportStep
 
         // The zone: the picker opens on a tap anywhere in it, or on the button.
         var zone = new Border { StrokeThickness = 2, StrokeDashArray = new DoubleCollection { 4, 3 }, Padding = new Thickness(24), HorizontalOptions = LayoutOptions.Fill };
-        zone.SetRadius(SheetUi.RadiusOf(0.75));
+        zone.SetRadius(KlyTheme.RadiusOf(0.75));
         zone.SetStroke(KlyTheme.BorderAccented);
         zone.SetThemeColor(VisualElement.BackgroundColorProperty, KlyTheme.BackgroundMuted);
         var accepted = string.Join(", ", importer.Schema.Accept);

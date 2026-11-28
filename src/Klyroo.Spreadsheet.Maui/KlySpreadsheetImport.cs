@@ -57,7 +57,7 @@ public class KlySpreadsheetImport : Border
         this.SetThemeColor(BackgroundColorProperty, KlyTheme.Background);
         this.SetStroke(KlyTheme.Border);
         StrokeThickness = 1;
-        this.SetRadius(SheetUi.RadiusOf(0.75));
+        this.SetRadius(KlyTheme.RadiusOf(0.75));
         Padding = new Thickness(16);
         HorizontalOptions = LayoutOptions.Fill;
         SemanticProperties.SetHeadingLevel(_title, SemanticHeadingLevel.Level2);
